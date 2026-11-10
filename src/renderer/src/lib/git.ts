@@ -63,6 +63,11 @@ export class Repo {
     return !!name && (await window.api.git('/', ['check-ref-format', '--branch', name])).ok
   }
 
+  /** Same rule git uses: the name must work inside refs/remotes/<name>/… */
+  static async isValidRemoteName(name: string): Promise<boolean> {
+    return !!name && (await window.api.git('/', ['check-ref-format', `refs/remotes/${name}/test`])).ok
+  }
+
   static async init(path: string, branch: string): Promise<void> {
     const args = ['init', `--initial-branch=${branch}`]
     const r = await window.api.git(path, args)
@@ -70,12 +75,13 @@ export class Repo {
   }
 
   async state(): Promise<RepoState> {
-    const [head, headHash, branches, tags, remotes, stashes, status, operation] = await Promise.all([
+    const [head, headHash, branches, tags, remotes, remoteUrls, stashes, status, operation] = await Promise.all([
       this.tryRun(['symbolic-ref', '--short', '-q', 'HEAD']),
       this.tryRun(['rev-parse', '--verify', '-q', 'HEAD']),
       this.branches(),
       this.tags(),
       this.remotes(),
+      this.remoteUrls(),
       this.stashes(),
       this.status(),
       this.operation()
@@ -86,6 +92,7 @@ export class Repo {
       branches,
       tags,
       remotes,
+      remoteUrls,
       stashes,
       status,
       operation
@@ -124,6 +131,37 @@ export class Repo {
   async remotes(): Promise<string[]> {
     const out = await this.run(['remote'])
     return out.split('\n').filter(Boolean)
+  }
+
+  /** Configured fetch URL of each remote (as written in .git/config, before insteadOf rewrites). */
+  async remoteUrls(): Promise<Record<string, string>> {
+    const out = await this.tryRun(['config', '--get-regexp', '^remote\\..*\\.url$']) // exits 1 when there are none
+    const res: Record<string, string> = {}
+    for (const line of (out ?? '').split('\n')) {
+      const m = /^remote\.(.+)\.url (.*)$/.exec(line)
+      if (m && !(m[1] in res)) res[m[1]] = m[2]
+    }
+    return res
+  }
+
+  addRemote(name: string, url: string) {
+    return this.run(['remote', 'add', name, url])
+  }
+
+  setRemoteUrl(name: string, url: string) {
+    return this.run(['remote', 'set-url', name, url])
+  }
+
+  renameRemote(oldName: string, newName: string) {
+    return this.run(['remote', 'rename', oldName, newName])
+  }
+
+  removeRemote(name: string) {
+    return this.run(['remote', 'remove', name])
+  }
+
+  fetchRemote(name: string) {
+    return this.run(['fetch', '--prune', name])
   }
 
   async stashes(): Promise<Stash[]> {

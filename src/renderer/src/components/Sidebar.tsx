@@ -1,4 +1,4 @@
-import { Archive, ChevronRight, Cloud, FileDiff, Folder, GitBranch, History, Tag } from 'lucide-react'
+import { Archive, ChevronRight, Cloud, FileDiff, Folder, GitBranch, History, Plus, Tag } from 'lucide-react'
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import type { Branch, RepoState, Stash } from '../lib/types'
 
@@ -11,10 +11,11 @@ interface TreeNode {
   leaves: Branch[]
 }
 
-function buildTree(branches: Branch[], keyPrefix: string): TreeNode {
+/** Folder tree of branch names. `strip` drops a leading prefix (e.g. "origin/") before splitting. */
+function buildTree(branches: Branch[], keyPrefix: string, strip = 0): TreeNode {
   const root: TreeNode = { name: '', key: keyPrefix, folders: new Map(), leaves: [] }
   for (const b of branches) {
-    const parts = b.name.split('/')
+    const parts = b.name.slice(strip).split('/')
     let node = root
     for (const part of parts.slice(0, -1)) {
       let next = node.folders.get(part)
@@ -49,6 +50,7 @@ interface Props {
   onStashOpen: (s: Stash) => void
   onStashMenu: (e: MouseEvent, s: Stash) => void
   onRemoteMenu: (e: MouseEvent, remote: string) => void
+  onAddRemote: () => void
   autoRefresh?: TimerProps
 }
 
@@ -75,7 +77,14 @@ export function Sidebar(p: Props) {
   const s = p.state
   const changes = s ? s.status.staged.length + s.status.unstaged.length + s.status.conflicted.length : 0
   const local = s?.branches.filter((b) => !b.remote) ?? []
-  const remote = s?.branches.filter((b) => b.remote) ?? []
+  // Remote-tracking branches grouped by remote (longest name wins, since remote names may contain "/").
+  const remoteNames = s?.remotes ?? []
+  const byRemote = new Map<string, Branch[]>(remoteNames.map((r) => [r, []]))
+  for (const b of s?.branches ?? []) {
+    if (!b.remote) continue
+    const owner = remoteNames.filter((r) => b.name.startsWith(r + '/')).sort((x, y) => y.length - x.length)[0]
+    if (owner) byRemote.get(owner)!.push(b)
+  }
 
   const renderTree = (node: TreeNode, depth: number): ReactNode => {
     const folders = [...node.folders.values()].sort((a, b) => a.name.localeCompare(b.name))
@@ -84,17 +93,15 @@ export function Sidebar(p: Props) {
       <>
         {folders.map((f) => {
           const isOpen = !collapsed.has(f.key)
-          const isRemoteRoot = node.key === 'remote' && depth === 0
           return (
             <div key={f.key}>
               <div
                 className={ROW}
                 style={{ paddingLeft: 8 + depth * 14 }}
                 onClick={() => toggle(f.key)}
-                onContextMenu={(e) => isRemoteRoot && p.onRemoteMenu(e, f.name)}
               >
                 <Chevron open={isOpen} />
-                {isRemoteRoot ? <Cloud className="size-4 flex-none text-muted" /> : <Folder className="size-4 flex-none text-muted" />}
+                <Folder className="size-4 flex-none text-muted" />
                 <span className="truncate">{f.name}</span>
               </div>
               {isOpen && renderTree(f, depth + 1)}
@@ -144,8 +151,44 @@ export function Sidebar(p: Props) {
           </div>
         ))}
       </Section>
-      <Section collapsed={collapsed} toggle={toggle} id="remotes" title="Remotes" icon={<Cloud className="size-3.5" />} count={s?.remotes.length ?? 0}>
-        {renderTree(buildTree(remote, 'remote'), 0)}
+      <Section
+        collapsed={collapsed}
+        toggle={toggle}
+        id="remotes"
+        title="Remotes"
+        icon={<Cloud className="size-3.5" />}
+        count={remoteNames.length}
+        action={{ label: 'Add remote', icon: <Plus className="size-3.5" />, onPress: p.onAddRemote }}
+      >
+        {s && !remoteNames.length && (
+          <div className={`${ROW} text-muted hover:text-foreground`} style={{ paddingLeft: 26 }} onClick={p.onAddRemote}>
+            <Plus className="size-4 flex-none" />
+            <span className="truncate">Add remote…</span>
+          </div>
+        )}
+        {remoteNames.map((r) => {
+          const key = `remote/${r}`
+          const isOpen = !collapsed.has(key)
+          const branches = byRemote.get(r) ?? []
+          const url = s?.remoteUrls[r]
+          return (
+            <div key={r}>
+              <div className={ROW} style={{ paddingLeft: 8 }} title={url ? `${r}: ${url}` : r} onClick={() => toggle(key)} onContextMenu={(e) => p.onRemoteMenu(e, r)}>
+                <Chevron open={isOpen} />
+                <Cloud className="size-4 flex-none text-muted" />
+                <span className="truncate">{r}</span>
+              </div>
+              {isOpen &&
+                (branches.length ? (
+                  renderTree(buildTree(branches, key, r.length + 1), 1)
+                ) : (
+                  <div className="truncate py-1 pr-2 text-xs text-muted" style={{ paddingLeft: 40 }}>
+                    No branches yet — push or fetch
+                  </div>
+                ))}
+            </div>
+          )
+        })}
       </Section>
       <Section collapsed={collapsed} toggle={toggle} id="stashes" title="Stashes" icon={<Archive className="size-3.5" />} count={s?.stashes.length ?? 0}>
         {s?.stashes.map((st) => (
@@ -177,19 +220,35 @@ function Section(props: {
   title: string
   icon: ReactNode
   count?: number
+  /** Small button at the end of the header (shown on hover). */
+  action?: { label: string; icon: ReactNode; onPress: () => void }
   children: ReactNode
 }) {
   const isOpen = !props.collapsed.has('section:' + props.id)
   return (
     <div className="mt-3">
       <div
-        className="flex h-7 cursor-default items-center gap-1.5 px-2 text-[11px] font-semibold tracking-wider text-muted uppercase hover:text-foreground"
+        className="group flex h-7 cursor-default items-center gap-1.5 px-2 text-[11px] font-semibold tracking-wider text-muted uppercase hover:text-foreground"
         onClick={() => props.toggle('section:' + props.id)}
       >
         <Chevron open={isOpen} />
         {props.icon}
         <span>{props.title}</span>
-        {props.count !== undefined && <span className="ml-auto font-medium tabular-nums">{props.count}</span>}
+        {props.action && (
+          <button
+            type="button"
+            aria-label={props.action.label}
+            title={props.action.label}
+            className={`ml-auto flex size-5 items-center justify-center rounded-md text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-foreground/10 hover:text-foreground focus-visible:opacity-100`}
+            onClick={(e) => {
+              e.stopPropagation()
+              props.action!.onPress()
+            }}
+          >
+            {props.action.icon}
+          </button>
+        )}
+        {props.count !== undefined && <span className={`${props.action ? '' : 'ml-auto'} font-medium tabular-nums`}>{props.count}</span>}
       </div>
       {isOpen && <div className="mt-0.5">{props.children}</div>}
     </div>

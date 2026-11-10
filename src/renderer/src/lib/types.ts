@@ -46,6 +46,7 @@ export interface RepoState {
   branches: Branch[]
   tags: string[]
   remotes: string[]
+  remoteUrls: Record<string, string> // remote name → URL
   stashes: Stash[]
   status: WorkingStatus
   operation: string | null // "MERGING", "REBASING", ...

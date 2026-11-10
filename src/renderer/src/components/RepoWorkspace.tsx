@@ -8,6 +8,8 @@ import {
   Check,
   Cherry,
   Clipboard,
+  Cloud,
+  CloudCog,
   Copy,
   ExternalLink,
   Flag,
@@ -38,6 +40,7 @@ import { ContextMenu, MenuBody, type MenuItem, type MenuState } from './ContextM
 import { useDialog } from './Dialog'
 import { HistoryView } from './HistoryView'
 import { RebaseDialog } from './RebaseDialog'
+import { RemoteDialog, type RemoteDialogResult } from './RemoteDialog'
 import { Sidebar, type View } from './Sidebar'
 import { StatusView } from './StatusView'
 import { IconButton, notifyError, notifySuccess, ToolbarButton } from './ui'
@@ -64,6 +67,12 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
   const [menu, setMenu] = useState<MenuState | null>(null)
   const [selectRef, setSelectRef] = useState<{ ref: string; nonce: number } | null>(null)
   const [rebase, setRebase] = useState<{ base: string | null; label: string } | null>(null)
+  const [remoteDlg, setRemoteDlg] = useState<{
+    edit?: { name: string; url: string }
+    intro?: string
+    then?: 'push' | 'pull'
+    key: number
+  } | null>(null)
   const busyRef = useRef(false)
   const firstLoad = useRef(true)
 
@@ -193,10 +202,10 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
 
   // ---------- actions ----------
 
-  const pushCurrent = async () => {
+  const pushCurrent = async (to?: string) => {
     if (!head) throw new Error('HEAD is detached — check out a branch to push.')
     const hasUpstream = !!currentBranch?.upstream && !currentBranch.gone
-    await repo.push(head, remotes, !hasUpstream)
+    await repo.push(head, to ? [to] : remotes, !!to || !hasUpstream)
   }
 
   const doPush = async () => {
@@ -705,8 +714,57 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
       }
     ])
 
-  const remoteMenu = (e: MouseEvent, name: string) =>
-    openMenu(e, [{ label: `Fetch ${name}`, action: () => run('Fetching…', () => repo.run(['fetch', '--prune', name]), `Fetched ${name}`), icon: <RefreshCw className={I} /> }])
+  // ---------- remotes ----------
+
+  const addRemote = (intro?: string, then?: 'push' | 'pull') => setRemoteDlg({ intro, then, key: Date.now() })
+
+  const remoteDone = async (r: RemoteDialogResult) => {
+    const then = remoteDlg?.then
+    const edited = !!remoteDlg?.edit
+    if (!r.fetch && !then) {
+      notifySuccess(edited ? `Remote ${r.name} saved` : `Added remote ${r.name}`)
+      return refresh()
+    }
+    const ok = !r.fetch || (await run(`Fetching ${r.name}…`, () => repo.fetchRemote(r.name), then ? undefined : `${edited ? 'Saved' : 'Added'} ${r.name} and fetched it`))
+    if (!r.fetch) await refresh()
+    if (!ok || !then) return
+    if (then === 'push') run('Pushing…', () => pushCurrent(r.name), `Pushed ${head} to ${r.name}`)
+    else run('Pulling…', () => repo.pull(), 'Pull complete')
+  }
+
+  const removeRemote = async (name: string) => {
+    const n = state?.branches.filter((b) => b.remote && b.name.startsWith(name + '/')).length ?? 0
+    const ok = await dialog.confirm(
+      `Remove remote “${name}”`,
+      <>
+        Disconnects this repository from <b>{name}</b>
+        {n > 0 && (
+          <>
+            {' '}
+            and forgets its {n} remote branch{n === 1 ? '' : 'es'}
+          </>
+        )}
+        . Local branches that track it lose their upstream. Nothing on the server is deleted.
+      </>,
+      'Remove remote',
+      true
+    )
+    if (ok) run('Removing remote…', () => repo.removeRemote(name), `Removed remote ${name}`)
+  }
+
+  const remoteMenu = (e: MouseEvent, name: string) => {
+    const url = state?.remoteUrls[name]
+    openMenu(e, [
+      { header: url ? `${name} · ${url}` : name },
+      { label: `Fetch ${name}`, action: () => run('Fetching…', () => repo.fetchRemote(name), `Fetched ${name}`), icon: <RefreshCw className={I} /> },
+      { label: 'Edit…', action: () => setRemoteDlg({ edit: { name, url: url ?? '' }, key: Date.now() }), icon: <CloudCog className={I} /> },
+      { label: 'Copy URL', disabled: !url, action: () => url && window.api.copy(url), icon: <Clipboard className={I} /> },
+      { separator: true },
+      { label: 'Add remote…', action: () => addRemote(), icon: <Cloud className={I} /> },
+      { separator: true },
+      { label: 'Remove…', danger: true, action: () => removeRemote(name), icon: <Trash2 className={I} /> }
+    ])
+  }
 
   const fileMenu = (e: MouseEvent, f: FileChange, staged: boolean) => {
     const items: MenuItem[] = []
@@ -760,25 +818,28 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
         <ToolbarButton
           icon={<ArrowDownToLine className="size-[18px]" />}
           label="Pull"
-          tooltip={currentBranch?.behind ? `Pull ${currentBranch.behind} new commit(s)` : 'Pull from remote'}
+          tooltip={!remotes.length ? 'No remote yet — click to add one' : currentBranch?.behind ? `Pull ${currentBranch.behind} new commit(s)` : 'Pull from remote'}
           badge={currentBranch?.behind}
-          isDisabled={!remotes.length}
-          onPress={() => run('Pulling…', () => repo.pull(), 'Pull complete')}
+          onPress={() =>
+            remotes.length ? run('Pulling…', () => repo.pull(), 'Pull complete') : addRemote('Pulling needs a remote. Add one and Linux Tree will pull from it.', 'pull')
+          }
         />
         <ToolbarButton
           icon={<ArrowUpFromLine className="size-[18px]" />}
           label="Push"
-          tooltip={currentBranch?.ahead ? `Push ${currentBranch.ahead} commit(s)` : 'Push to remote'}
+          tooltip={!remotes.length ? 'No remote yet — click to add one' : currentBranch?.ahead ? `Push ${currentBranch.ahead} commit(s)` : 'Push to remote'}
           badge={currentBranch?.ahead}
-          isDisabled={!remotes.length}
-          onPress={doPush}
+          onPress={() => {
+            if (remotes.length) return doPush()
+            if (!head) return onError('HEAD is detached — check out a branch to push.')
+            addRemote(`Pushing needs a remote. Add one and Linux Tree will push ${head} to it.`, 'push')
+          }}
         />
         <ToolbarButton
           icon={<RefreshCw className="size-[18px]" />}
           label="Fetch"
-          tooltip="Fetch all remotes"
-          isDisabled={!remotes.length}
-          onPress={() => run('Fetching…', () => repo.fetch(), 'Fetch complete')}
+          tooltip={remotes.length ? 'Fetch all remotes' : 'No remote yet — click to add one'}
+          onPress={() => (remotes.length ? run('Fetching…', () => repo.fetch(), 'Fetch complete') : addRemote())}
         />
         <div className="mx-1.5 h-7 w-px bg-separator" />
         <ToolbarButton icon={<GitBranchPlus className="size-[18px]" />} label="Branch" tooltip="Create a branch" onPress={() => newBranch(null)} />
@@ -829,6 +890,7 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
           onStashOpen={applyStash}
           onStashMenu={stashMenu}
           onRemoteMenu={remoteMenu}
+          onAddRemote={() => addRemote()}
           autoRefresh={{ ms: AUTO_REFRESH_MS, paused: !active || !!busy, resetKey: reloadKey, onTick: poll }}
         />
         <main className="min-w-0 flex-1 overflow-hidden rounded-xl border border-separator bg-surface shadow-surface">
@@ -915,6 +977,17 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
             setRebase(null)
             run('Rebasing…', () => repo.interactiveRebase(base, todo), 'Rebase complete')
           }}
+        />
+      )}
+      {remoteDlg && (
+        <RemoteDialog
+          key={remoteDlg.key}
+          repo={repo}
+          existing={remotes}
+          edit={remoteDlg.edit}
+          intro={remoteDlg.intro}
+          onDone={remoteDone}
+          onClose={() => setRemoteDlg((cur) => (cur?.key === remoteDlg.key ? null : cur))}
         />
       )}
     </div>

@@ -53,6 +53,10 @@ Git runs without a terminal, so it never hangs on a hidden prompt:
 - **New repository**: pick a name, location and initial branch; the folder is created and
   initialized. Opening a folder that isn't a repository offers to initialize it in place
   (with a warning for your home folder). Empty repositories open on the commit view.
+- **Remotes**: add one from the + on the Remotes header (or press Push / Pull / Fetch in a
+  repository without a remote: it asks for one, then carries on). Right-click a remote to
+  fetch, edit its name / URL, copy the URL or remove it. Every remote is listed, even
+  before it has any branches.
 - **Light / dark / system theme** (button at the top right).
 - **Auto-refresh** every 5 seconds (the faint line above Branches fills up to the next one):
   branches, tags, stashes, file status and commits pick up changes made outside the app.
@@ -105,5 +109,5 @@ src/renderer/src/
   lib/patch.ts     Partial patches for hunk/line staging
   App.tsx          Shell: tabs, home screen, settings persistence, shortcuts, theme
   components/      RepoWorkspace (one per tab), TabBar, Home, Sidebar, HistoryView,
-                   StatusView, DiffView, RebaseDialog, NewRepoDialog, Dialog, ContextMenu
+                   StatusView, DiffView, RebaseDialog, NewRepoDialog, RemoteDialog, Dialog, ContextMenu
 ```
