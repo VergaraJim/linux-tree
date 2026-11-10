@@ -64,6 +64,7 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
   const [selectRef, setSelectRef] = useState<{ ref: string; nonce: number } | null>(null)
   const [rebase, setRebase] = useState<{ base: string | null; label: string } | null>(null)
   const busyRef = useRef(false)
+  const firstLoad = useRef(true)
 
   // ---------- helpers ----------
 
@@ -75,6 +76,11 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
       setState(s)
       setFlow(f)
       setReloadKey((k) => k + 1)
+      // A repository without commits has no history to show: start on the commit view.
+      if (firstLoad.current) {
+        firstLoad.current = false
+        if (!s.headHash) setView('status')
+      }
     } catch (e) {
       onError(e)
     }

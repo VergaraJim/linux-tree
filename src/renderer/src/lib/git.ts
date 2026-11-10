@@ -42,8 +42,31 @@ export class Repo {
   // ---------- reading ----------
 
   static async isRepo(path: string): Promise<string | null> {
+    return (await Repo.locate(path)).top
+  }
+
+  /** Top level of the repository containing `path`. `notRepo` = git says it's not inside one
+   *  (as opposed to other failures like "dubious ownership", which are reported as-is). */
+  static async locate(path: string): Promise<{ top: string | null; notRepo: boolean; error: string }> {
     const r = await window.api.git(path, ['rev-parse', '--show-toplevel'])
-    return r.ok ? r.stdout.trim() : null
+    if (r.ok) return { top: r.stdout.trim(), notRepo: false, error: '' }
+    return { top: null, notRepo: /not a git repository/i.test(r.stderr), error: r.stderr.trim() }
+  }
+
+  /** The user's init.defaultBranch, or "main". */
+  static async defaultBranch(): Promise<string> {
+    const r = await window.api.git('/', ['config', '--get', 'init.defaultBranch'])
+    return (r.ok && r.stdout.trim()) || 'main'
+  }
+
+  static async isValidBranchName(name: string): Promise<boolean> {
+    return !!name && (await window.api.git('/', ['check-ref-format', '--branch', name])).ok
+  }
+
+  static async init(path: string, branch: string): Promise<void> {
+    const args = ['init', `--initial-branch=${branch}`]
+    const r = await window.api.git(path, args)
+    if (!r.ok) throw new GitError(args, r.stderr, r.code)
   }
 
   async state(): Promise<RepoState> {

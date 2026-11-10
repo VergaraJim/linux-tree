@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, clipboard, Menu } from 'electron'
 import { spawn } from 'child_process'
 import { join, dirname, resolve } from 'path'
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, readdirSync } from 'fs'
 import { askpassEnv, startAskpass, tmpDir } from './askpass'
 
 export interface GitResult {
@@ -95,9 +95,32 @@ ipcMain.handle('git:run', (_e, cwd: string, args: string[], opts: RunOpts = {}):
   })
 })
 
-ipcMain.handle('repo:pick', async () => {
-  const res = await dialog.showOpenDialog({ properties: ['openDirectory'] })
+interface PickOpts {
+  title?: string
+  buttonLabel?: string
+  defaultPath?: string
+}
+ipcMain.handle('repo:pick', async (e, opts: PickOpts = {}) => {
+  const o: Electron.OpenDialogOptions = { properties: ['openDirectory', 'createDirectory'], ...opts }
+  const win = BrowserWindow.fromWebContents(e.sender)
+  const res = win ? await dialog.showOpenDialog(win, o) : await dialog.showOpenDialog(o)
   return res.canceled ? null : res.filePaths[0]
+})
+ipcMain.handle('app:home', () => app.getPath('home'))
+// Create a folder for a new repository. An existing empty folder is accepted.
+// Returns an error message, or null on success.
+ipcMain.handle('fs:mkdir', (_e, p: string): string | null => {
+  try {
+    if (existsSync(p)) {
+      if (!statSync(p).isDirectory()) return 'A file with that name already exists.'
+      if (readdirSync(p).length) return "A folder with that name already exists and isn't empty."
+      return null
+    }
+    mkdirSync(p)
+    return null
+  } catch (err) {
+    return (err as Error).message
+  }
 })
 ipcMain.handle('settings:get', () => loadSettings())
 ipcMain.handle('settings:set', (_e, s: unknown) => {

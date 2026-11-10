@@ -20,7 +20,11 @@ const api = {
     }
   },
   askpassReply: (id: number, value: string | null) => ipcRenderer.send('askpass:reply', id, value),
-  pickRepo: (): Promise<string | null> => ipcRenderer.invoke('repo:pick'),
+  pickRepo: (opts?: { title?: string; buttonLabel?: string; defaultPath?: string }): Promise<string | null> =>
+    ipcRenderer.invoke('repo:pick', opts),
+  home: (): Promise<string> => ipcRenderer.invoke('app:home'),
+  /** Create a folder (an existing empty one is fine). Resolves to an error message or null. */
+  mkdir: (p: string): Promise<string | null> => ipcRenderer.invoke('fs:mkdir', p),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSettings: (s: unknown) => ipcRenderer.invoke('settings:set', s),
   openPath: (p: string) => ipcRenderer.invoke('shell:open', p),

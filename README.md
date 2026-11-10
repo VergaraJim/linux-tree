@@ -50,6 +50,9 @@ Git runs without a terminal, so it never hangs on a hidden prompt:
   uncommitted changes.
 - **Home screen**: recent repositories with current branch and last-opened time, filter,
   "not found" detection for moved/deleted folders, remove from list, show in file manager.
+- **New repository**: pick a name, location and initial branch; the folder is created and
+  initialized. Opening a folder that isn't a repository offers to initialize it in place
+  (with a warning for your home folder). Empty repositories open on the commit view.
 - **Light / dark / system theme** (button at the top right).
 - **Commit graph** across all branches (or current only), ref labels, search, infinite scroll,
   commit details + diffs. Right-click: checkout, branch/tag here, cherry-pick, revert, reset.
@@ -72,6 +75,7 @@ Git runs without a terminal, so it never hangs on a hidden prompt:
 | Keys | Action |
 | --- | --- |
 | Ctrl+O | Open repository |
+| Ctrl+N | New repository |
 | Ctrl+T | Home screen (open another repository) |
 | Ctrl+W | Close tab |
 | Ctrl+Tab / Ctrl+Shift+Tab | Next / previous tab (also Ctrl+PageDown/PageUp) |
@@ -96,5 +100,5 @@ src/renderer/src/
   lib/patch.ts     Partial patches for hunk/line staging
   App.tsx          Shell: tabs, home screen, settings persistence, shortcuts, theme
   components/      RepoWorkspace (one per tab), TabBar, Home, Sidebar, HistoryView,
-                   StatusView, DiffView, RebaseDialog, Dialog, ContextMenu
+                   StatusView, DiffView, RebaseDialog, NewRepoDialog, Dialog, ContextMenu
 ```

@@ -1,5 +1,5 @@
 import { Button, Kbd, SearchField, Tooltip } from '@heroui/react'
-import { AlertCircle, Clock, FolderOpen, FolderSearch, GitBranch, X } from 'lucide-react'
+import { AlertCircle, Clock, FolderOpen, FolderPlus, FolderSearch, GitBranch, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { timeAgo } from './ui'
 
@@ -18,6 +18,7 @@ interface Props {
   openTabs: string[]
   onOpen: (path: string) => void
   onPick: () => void
+  onNew: () => void
   onRemove: (path: string) => void
 }
 
@@ -48,7 +49,7 @@ function RepoTile({ name }: { name: string }) {
   )
 }
 
-export function Home({ recent, openTabs, onOpen, onPick, onRemove }: Props) {
+export function Home({ recent, openTabs, onOpen, onPick, onNew, onRemove }: Props) {
   const [query, setQuery] = useState('')
   const [info, setInfo] = useState<Record<string, RepoInfo>>({})
 
@@ -84,15 +85,17 @@ export function Home({ recent, openTabs, onOpen, onPick, onRemove }: Props) {
           <AppLogo className="size-16 flex-none drop-shadow-lg" />
           <div className="min-w-0 flex-1">
             <h1 className="text-2xl font-semibold tracking-tight">Linux Tree</h1>
-            <p className="mt-1 text-sm text-muted">A fast Git client with built-in git-flow.</p>
+            <p className="mt-1 text-sm text-muted">
+              A fast Git client with built-in <span className="whitespace-nowrap">git-flow</span>.
+            </p>
           </div>
+          <Button variant="secondary" onPress={onNew} className="gap-2">
+            <FolderPlus className="size-4" />
+            New repository
+          </Button>
           <Button variant="primary" onPress={onPick} className="gap-2">
             <FolderOpen className="size-4" />
             Open repository
-            <Kbd className="ml-1 bg-white/15 text-[11px] text-accent-foreground">
-              <Kbd.Abbr keyValue="ctrl" />
-              <Kbd.Content>O</Kbd.Content>
-            </Kbd>
           </Button>
         </div>
 
@@ -119,11 +122,16 @@ export function Home({ recent, openTabs, onOpen, onPick, onRemove }: Props) {
               <FolderSearch className="size-10 text-muted opacity-60" strokeWidth={1.5} />
               <div>
                 <div className="font-medium">No repositories yet</div>
-                <div className="mt-1 text-sm text-muted">Open a folder that contains a Git repository to get started.</div>
+                <div className="mt-1 text-sm text-muted">Open a folder that contains a Git repository, or create a new one.</div>
               </div>
-              <Button variant="secondary" size="sm" onPress={onPick} className="mt-1 gap-2">
-                <FolderOpen className="size-4" /> Open repository
-              </Button>
+              <div className="mt-1 flex gap-2">
+                <Button variant="secondary" size="sm" onPress={onPick} className="gap-2">
+                  <FolderOpen className="size-4" /> Open repository
+                </Button>
+                <Button variant="secondary" size="sm" onPress={onNew} className="gap-2">
+                  <FolderPlus className="size-4" /> New repository
+                </Button>
+              </div>
             </div>
           ) : sorted.length === 0 ? (
             <div className="px-1 py-6 text-sm text-muted">No repositories match “{query}”.</div>
@@ -198,6 +206,7 @@ export function Home({ recent, openTabs, onOpen, onPick, onRemove }: Props) {
         <section className="animate-fade-in flex flex-wrap gap-x-6 gap-y-2 text-xs text-muted" style={{ animationDelay: '120ms' }}>
           {[
             [['ctrl', 'O'], 'Open repository'],
+            [['ctrl', 'N'], 'New repository'],
             [['ctrl', 'T'], 'Home / new tab'],
             [['ctrl', 'W'], 'Close tab'],
             [['ctrl', 'Tab'], 'Next tab'],

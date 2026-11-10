@@ -1,8 +1,9 @@
 import { Toast, toast, useTheme } from '@heroui/react'
-import { KeyRound, ShieldQuestion } from 'lucide-react'
+import { AlertTriangle, FolderGit2, KeyRound, ShieldQuestion } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useDialog } from './components/Dialog'
 import { Home, type RecentRepo } from './components/Home'
+import { NewRepoDialog } from './components/NewRepoDialog'
 import { RepoWorkspace } from './components/RepoWorkspace'
 import { TabBar, tabNames, type TabInfo } from './components/TabBar'
 import { notifyError } from './components/ui'
@@ -25,8 +26,16 @@ export default function App() {
   const [tabs, setTabs] = useState<string[]>([])
   const [active, setActive] = useState<string | null>(null)
   const [tabInfo, setTabInfo] = useState<Record<string, { head: string | null; changes: number }>>({})
+  const [home, setHome] = useState('')
+  const [newRepo, setNewRepo] = useState(false)
   const activeRef = useRef(active)
   activeRef.current = active
+  const homeRef = useRef(home)
+  homeRef.current = home
+
+  useEffect(() => {
+    window.api.home().then(setHome)
+  }, [])
 
   // ---------- settings: load once, then save on every change ----------
 
@@ -61,12 +70,7 @@ export default function App() {
 
   // ---------- tabs ----------
 
-  const openRepo = useCallback(async (p: string) => {
-    const top = await Repo.isRepo(p)
-    if (!top) {
-      notifyError('Not a Git repository', `${p} is not inside a Git repository.`)
-      return
-    }
+  const addTab = useCallback((top: string) => {
     setRecent((prev) => [{ path: top, lastOpened: Date.now() }, ...prev.filter((r) => r.path !== top)].slice(0, MAX_RECENT))
     setTabs((prev) => {
       if (prev.includes(top)) return prev
@@ -75,6 +79,58 @@ export default function App() {
     })
     setActive(top)
   }, [])
+
+  /** Open the repository containing `p`; for a plain folder, offer to initialize one. */
+  const openRepo = useCallback(
+    async (p: string) => {
+      const loc = await Repo.locate(p)
+      if (loc.top) return addTab(loc.top)
+      if (!loc.notRepo) return notifyError('Couldn’t open repository', loc.error)
+
+      const name = p.split('/').filter(Boolean).pop() ?? p
+      const risky = p === '/' || p === homeRef.current
+      const v = await dialog.prompt({
+        title: 'Initialize a repository?',
+        icon: <FolderGit2 className="size-5" />,
+        size: 'md',
+        message: (
+          <>
+            <b>{name}</b> isn’t a Git repository yet. Create a new repository in this folder? Existing files stay as they are and show up as
+            uncommitted changes.
+            <code className="mt-2 block font-mono text-xs break-all">
+              {p}
+            </code>
+            {risky && (
+              <span className="mt-2 flex items-start gap-1.5 text-warning">
+                <AlertTriangle className="mt-0.5 size-4 flex-none" />
+                This is your {p === '/' ? 'root' : 'home'} folder. Everything inside it would become part of this repository.
+              </span>
+            )}
+          </>
+        ),
+        fields: [{ name: 'branch', label: 'Initial branch', type: 'text', value: await Repo.defaultBranch() }],
+        okLabel: 'Initialize repository'
+      })
+      if (!v) return
+      const branch = String(v.branch).trim()
+      try {
+        if (!(await Repo.isValidBranchName(branch))) throw new Error(`“${branch}” isn’t a valid branch name.`)
+        await Repo.init(p, branch)
+      } catch (e) {
+        return notifyError('Couldn’t initialize repository', e)
+      }
+      const top = await Repo.isRepo(p)
+      if (top) addTab(top)
+    },
+    [dialog, addTab]
+  )
+
+  // New repositories default to the folder holding the most recently opened one.
+  const newRepoLocation = useMemo(() => {
+    const latest = [...recent].sort((a, b) => b.lastOpened - a.lastOpened)[0]
+    const dir = latest ? latest.path.replace(/\/[^/]+\/?$/, '') || '/' : home
+    return home && (dir === home || dir.startsWith(home + '/')) ? '~' + dir.slice(home.length) : dir
+  }, [recent, home])
 
   const pickRepo = useCallback(() => {
     window.api.pickRepo().then((p) => {
@@ -118,6 +174,7 @@ export default function App() {
         setActive(tabs[(i + dir + tabs.length) % tabs.length])
       }
       if (k === 'o') pickRepo()
+      else if (k === 'n') setNewRepo(true)
       else if (k === 't') setActive(null)
       else if (k === 'w') {
         if (active) closeTab(active)
@@ -183,7 +240,14 @@ export default function App() {
       />
       <div className="relative min-h-0 flex-1">
         {loaded && active === null && (
-          <Home recent={recent} openTabs={tabs} onOpen={openRepo} onPick={pickRepo} onRemove={(p) => setRecent((prev) => prev.filter((r) => r.path !== p))} />
+          <Home
+            recent={recent}
+            openTabs={tabs}
+            onOpen={openRepo}
+            onPick={pickRepo}
+            onNew={() => setNewRepo(true)}
+            onRemove={(p) => setRecent((prev) => prev.filter((r) => r.path !== p))}
+          />
         )}
         {tabs.map((p) => (
           <div key={p} className={p === active ? 'h-full' : 'hidden'}>
@@ -191,6 +255,9 @@ export default function App() {
           </div>
         ))}
       </div>
+      {newRepo && home && (
+        <NewRepoDialog defaultLocation={newRepoLocation} home={home} onClose={() => setNewRepo(false)} onCreated={openRepo} />
+      )}
       <Toast.Provider placement="bottom end" />
     </div>
   )
