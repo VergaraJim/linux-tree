@@ -54,6 +54,11 @@ Git runs without a terminal, so it never hangs on a hidden prompt:
   initialized. Opening a folder that isn't a repository offers to initialize it in place
   (with a warning for your home folder). Empty repositories open on the commit view.
 - **Light / dark / system theme** (button at the top right).
+- **Auto-refresh** every 5 seconds (the faint line above Branches fills up to the next one):
+  branches, tags, stashes, file status and commits pick up changes made outside the app.
+  History only reloads when a branch/tag/HEAD moved, so selection and scroll are kept.
+  Paused while a git command runs and while the tab or window is in the background.
+  Remote branches still update only on Fetch.
 - **Commit graph** across all branches (or current only), ref labels, search, infinite scroll,
   commit details + diffs. Right-click: checkout, branch/tag here, cherry-pick, revert, reset.
 - **Branch folders**: `feature/x` shown as a collapsible tree, ↑ahead / ↓behind counts,

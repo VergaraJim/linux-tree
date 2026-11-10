@@ -44,6 +44,7 @@ import { IconButton, notifyError, notifySuccess, ToolbarButton } from './ui'
 
 const FLOW_LABEL: Record<FlowType, string> = { feature: 'Feature', release: 'Release', hotfix: 'Hotfix' }
 const I = 'size-4'
+const AUTO_REFRESH_MS = 5000
 let menuId = 1
 
 interface Props {
@@ -70,21 +71,55 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
 
   const onError = useCallback((e: unknown) => notifyError('Git error', e), [])
 
-  const refresh = useCallback(async () => {
-    try {
-      const [s, f] = await Promise.all([repo.state(), readFlowConfig(repo)])
+  // Fingerprints of the last load, so background polls only re-render when something changed.
+  const sigRef = useRef({ refs: '', rest: '' })
+  const loadGen = useRef(0)
+
+  /** Read repo state. `force` always updates and reloads history; otherwise only what changed. */
+  const load = useCallback(
+    async (force: boolean) => {
+      const gen = ++loadGen.current
+      const [s, f, refs] = await Promise.all([
+        repo.state(),
+        readFlowConfig(repo),
+        repo.tryRun(['for-each-ref', '--format=%(objectname) %(refname)'])
+      ])
+      if (gen !== loadGen.current) return // a newer load started meanwhile; drop this result
+      const refsSig = JSON.stringify([refs, s.head, s.headHash])
+      const restSig = JSON.stringify([s, f])
+      const refsChanged = refsSig !== sigRef.current.refs
+      if (!force && !refsChanged && restSig === sigRef.current.rest) return
+      sigRef.current = { refs: refsSig, rest: restSig }
       setState(s)
       setFlow(f)
-      setReloadKey((k) => k + 1)
+      // Commits only change when a ref (or detached HEAD) moves.
+      if (force || refsChanged) setReloadKey((k) => k + 1)
       // A repository without commits has no history to show: start on the commit view.
       if (firstLoad.current) {
         firstLoad.current = false
         if (!s.headHash) setView('status')
       }
+    },
+    [repo]
+  )
+
+  const refresh = useCallback(async () => {
+    try {
+      await load(true)
     } catch (e) {
       onError(e)
     }
-  }, [repo, onError])
+  }, [load, onError])
+
+  /** Background refresh (auto-refresh timer, window focus): silent, and a no-op when nothing changed. */
+  const poll = useCallback(async () => {
+    if (busyRef.current) return
+    try {
+      await load(false)
+    } catch {
+      // Stay quiet in the background; a manual refresh (F5) shows the error.
+    }
+  }, [load])
 
   /** Run a git operation with a busy indicator, error toast and refresh. */
   const run = useCallback(
@@ -127,7 +162,7 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
     let t: ReturnType<typeof setTimeout> | undefined
     const off = window.api.onFocus(() => {
       clearTimeout(t)
-      t = setTimeout(() => !busyRef.current && refresh(), 150)
+      t = setTimeout(poll, 150)
     })
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'F5' || (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'r')) {
@@ -141,7 +176,7 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
       off()
       window.removeEventListener('keydown', onKey)
     }
-  }, [active, refresh])
+  }, [active, refresh, poll])
 
   const openMenu = (e: MouseEvent, items: MenuItem[]) => {
     e.preventDefault()
@@ -794,6 +829,7 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
           onStashOpen={applyStash}
           onStashMenu={stashMenu}
           onRemoteMenu={remoteMenu}
+          autoRefresh={{ ms: AUTO_REFRESH_MS, paused: !active || !!busy, resetKey: reloadKey, onTick: poll }}
         />
         <main className="min-w-0 flex-1 overflow-hidden rounded-xl border border-separator bg-surface shadow-surface">
           {state && view === 'history' && (

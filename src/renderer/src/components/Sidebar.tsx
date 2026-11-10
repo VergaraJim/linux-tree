@@ -1,5 +1,5 @@
 import { Archive, ChevronRight, Cloud, FileDiff, Folder, GitBranch, History, Tag } from 'lucide-react'
-import { useState, type MouseEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import type { Branch, RepoState, Stash } from '../lib/types'
 
 export type View = 'status' | 'history'
@@ -49,6 +49,7 @@ interface Props {
   onStashOpen: (s: Stash) => void
   onStashMenu: (e: MouseEvent, s: Stash) => void
   onRemoteMenu: (e: MouseEvent, remote: string) => void
+  autoRefresh?: TimerProps
 }
 
 const ROW = 'list-row h-7 pr-2 text-[13px]'
@@ -131,6 +132,7 @@ export function Sidebar(p: Props) {
         <NavItem current={p.view} onView={p.onView} v="status" icon={<FileDiff className="size-4" />} label="File status" badge={changes} />
         <NavItem current={p.view} onView={p.onView} v="history" icon={<History className="size-4" />} label="History" />
       </div>
+      {p.autoRefresh && <RefreshTimer {...p.autoRefresh} />}
       <Section collapsed={collapsed} toggle={toggle} id="branches" title="Branches" icon={<GitBranch className="size-3.5" />} count={local.length}>
         {renderTree(buildTree(local, 'local'), 0)}
       </Section>
@@ -190,6 +192,52 @@ function Section(props: {
         {props.count !== undefined && <span className="ml-auto font-medium tabular-nums">{props.count}</span>}
       </div>
       {isOpen && <div className="mt-0.5">{props.children}</div>}
+    </div>
+  )
+}
+
+interface TimerProps {
+  ms: number
+  /** Stop the timer (tab in background, git operation running). */
+  paused: boolean
+  /** Restart the cycle when this changes (e.g. after any refresh). */
+  resetKey: number
+  onTick: () => Promise<void>
+}
+
+/** Faint line that fills up over `ms`, then runs `onTick` and starts over.
+ *  Timing uses setTimeout (the animation is only visual), and stops while the window is hidden. */
+function RefreshTimer({ ms, paused, resetKey, onTick }: TimerProps) {
+  const [cycle, setCycle] = useState(0)
+  const [hidden, setHidden] = useState(() => document.hidden)
+  const tick = useRef(onTick)
+  tick.current = onTick
+
+  useEffect(() => {
+    const onVis = () => setHidden(document.hidden)
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [])
+
+  const stopped = paused || hidden
+  useEffect(() => {
+    if (stopped) return
+    let alive = true
+    const t = setTimeout(async () => {
+      await tick.current()
+      if (alive) setCycle((c) => c + 1)
+    }, ms)
+    return () => {
+      alive = false
+      clearTimeout(t)
+    }
+  }, [stopped, resetKey, cycle, ms])
+
+  return (
+    <div className="px-2.5 pt-3 pb-1" title={`Branches and commits refresh every ${ms / 1000} seconds`}>
+      <div className="h-0.5 overflow-hidden rounded-full bg-foreground/[0.04]">
+        {!stopped && <div key={`${resetKey}:${cycle}`} className="refresh-timer h-full rounded-full bg-accent/30" style={{ animationDuration: `${ms}ms` }} />}
+      </div>
     </div>
   )
 }

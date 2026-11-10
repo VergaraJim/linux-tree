@@ -156,7 +156,7 @@ export class Repo {
   }
 
   async status(): Promise<WorkingStatus> {
-    const out = await this.run(['status', '--porcelain=v1', '-z', '-uall'])
+    const out = await this.run(['--no-optional-locks', 'status', '--porcelain=v1', '-z', '-uall'])
     const parts = out.split('\0')
     const staged: FileChange[] = []
     const unstaged: FileChange[] = []
