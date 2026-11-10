@@ -1,0 +1,272 @@
+@import "tailwindcss";
+@import "@heroui/styles";
+
+@theme {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "DejaVu Sans Mono", monospace;
+}
+
+/* Slightly tighter radius suits a dense desktop tool. */
+:root {
+  --radius: 0.5rem;
+  --tooltip-delay: 500ms;
+}
+
+/* Extra tokens for git-specific UI, tuned per theme. */
+:root,
+.light,
+[data-theme="light"] {
+  --diff-add-bg: oklch(0.95 0.05 150);
+  --diff-add-bg-strong: oklch(0.88 0.1 150);
+  --diff-add-fg: oklch(0.42 0.12 150);
+  --diff-del-bg: oklch(0.95 0.035 25);
+  --diff-del-bg-strong: oklch(0.88 0.08 25);
+  --diff-del-fg: oklch(0.48 0.16 25);
+  --diff-hunk-bg: oklch(0.95 0.025 255);
+  --diff-hunk-fg: oklch(0.5 0.12 255);
+  --row-hover: color-mix(in oklab, var(--foreground) 4%, transparent);
+  --row-selected: color-mix(in oklab, var(--accent) 14%, transparent);
+  --graph-bg: var(--surface);
+}
+
+.dark,
+[data-theme="dark"] {
+  --diff-add-bg: oklch(0.3 0.06 150 / 0.45);
+  --diff-add-bg-strong: oklch(0.42 0.1 150 / 0.7);
+  --diff-add-fg: oklch(0.82 0.14 150);
+  --diff-del-bg: oklch(0.3 0.08 25 / 0.45);
+  --diff-del-bg-strong: oklch(0.42 0.13 25 / 0.7);
+  --diff-del-fg: oklch(0.8 0.12 25);
+  --diff-hunk-bg: oklch(0.3 0.05 255 / 0.5);
+  --diff-hunk-fg: oklch(0.8 0.08 255);
+  --row-hover: color-mix(in oklab, var(--foreground) 5%, transparent);
+  --row-selected: color-mix(in oklab, var(--accent) 22%, transparent);
+  --graph-bg: var(--surface);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  font-feature-settings: "cv11", "ss01";
+}
+
+/* Text the user may want to copy. */
+.selectable-text,
+.diff {
+  user-select: text;
+}
+
+/* ---------- commit list ---------- */
+.log-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  cursor: default;
+}
+.log-row:hover {
+  background: var(--row-hover);
+}
+.log-row.selected {
+  background: var(--row-selected);
+}
+.log-row.selected::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 3px;
+  bottom: 3px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
+}
+
+.ref-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+}
+.ref-head {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+.ref-local {
+  background: var(--accent-soft);
+  color: var(--accent-soft-foreground);
+}
+.ref-remote {
+  background: var(--default);
+  color: var(--muted);
+}
+.ref-tag {
+  background: var(--warning-soft);
+  color: var(--warning-soft-foreground);
+}
+
+/* ---------- list rows (files / sidebar) ---------- */
+.list-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  border-radius: 6px;
+  cursor: default;
+}
+.list-row:hover {
+  background: var(--row-hover);
+}
+.list-row.selected {
+  background: var(--row-selected);
+}
+
+/* ---------- diff ---------- */
+.diff {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 20px;
+  min-width: max-content;
+  padding-bottom: 12px;
+}
+.dl {
+  display: flex;
+  white-space: pre;
+}
+.dl .ln {
+  width: 46px;
+  flex: none;
+  padding-right: 8px;
+  text-align: right;
+  color: color-mix(in oklab, var(--muted) 65%, transparent);
+  user-select: none;
+}
+.dl .ln + .ln {
+  border-right: 1px solid var(--separator);
+}
+.dl .code {
+  padding: 0 16px 0 10px;
+}
+.dl.add {
+  background: var(--diff-add-bg);
+}
+.dl.add .code {
+  color: var(--diff-add-fg);
+}
+.dl.del {
+  background: var(--diff-del-bg);
+}
+.dl.del .code {
+  color: var(--diff-del-fg);
+}
+.dl.meta {
+  color: var(--muted);
+}
+.dl.selectable {
+  cursor: pointer;
+}
+.dl.selectable:hover {
+  filter: brightness(1.12);
+}
+.dl.add.picked {
+  background: var(--diff-add-bg-strong);
+  box-shadow: inset 3px 0 0 var(--success);
+}
+.dl.del.picked {
+  background: var(--diff-del-bg-strong);
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+.hunk-header {
+  position: sticky;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 4px 8px 4px 12px;
+  background: var(--diff-hunk-bg);
+  color: var(--diff-hunk-fg);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.hunk-block:first-child .hunk-header {
+  margin-top: 0;
+}
+
+/* ---------- misc ---------- */
+.splitter-h {
+  height: 6px;
+  flex: none;
+  cursor: row-resize;
+  position: relative;
+}
+.splitter-h::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 2px;
+  height: 1px;
+  background: var(--separator);
+  transition: background 0.15s, height 0.15s, top 0.15s;
+}
+.splitter-h:hover::after {
+  top: 1px;
+  height: 3px;
+  background: var(--accent);
+}
+
+.tab-drop-before {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-fade-in {
+  animation: fade-in 0.25s ease-out both;
+}
+
+/* ---------- HeroUI density overrides (unlayered, so they win over HeroUI's layers) ---------- */
+.menu-item {
+  min-height: 30px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  gap: 10px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+.menu-section [data-slot="header"],
+.menu-section header {
+  font-size: 11px;
+}
+
+/* Thin, themed scrollbars everywhere (Chromium's default has arrow buttons). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--foreground) 18%, transparent) transparent;
+}

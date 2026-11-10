@@ -1,0 +1,92 @@
+{
+  "name": "linux-tree",
+  "version": "0.1.0",
+  "description": "A Sourcetree-style Git GUI for Linux with built-in git-flow",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit",
+    "dist:deb": "electron-vite build && electron-builder --linux deb"
+  },
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@heroui/react": "^3.2.7",
+    "@internationalized/date": "^3.12.4",
+    "@react-aria/ssr": "^3.10.1",
+    "@react-aria/utils": "^3.34.1",
+    "@tailwindcss/vite": "^4.3.5",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "lucide-react": "^1.71.0",
+    "react": "^19.3.1",
+    "react-aria": "^3.53.1",
+    "react-aria-components": "^1.22.1",
+    "react-dom": "^19.3.1",
+    "tailwindcss": "^4.3.5",
+    "typescript": "5.6",
+    "vite": "^5.4.21"
+  },
+  "allowScripts": {
+    "electron@33.4.11": true,
+    "esbuild@0.21.5": true
+  },
+  "productName": "Linux Tree",
+  "author": {
+    "name": "jimvergara",
+    "email": "vergarajim.info@gmail.com"
+  },
+  "build": {
+    "appId": "com.jimvergara.linuxtree",
+    "productName": "Linux Tree",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "linux": {
+      "target": [
+        "deb"
+      ],
+      "category": "Development",
+      "icon": "build/icon.png",
+      "executableName": "linux-tree",
+      "synopsis": "Sourcetree-style Git GUI with git-flow",
+      "desktop": {
+        "entry": {
+          "StartupWMClass": "linux-tree"
+        }
+      }
+    },
+    "deb": {
+      "depends": [
+        "git",
+        "openssh-client",
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libsecret-1-0"
+      ],
+      "afterInstall": "build/after-install.sh",
+      "afterRemove": "build/after-remove.sh"
+    }
+  },
+  "homepage": "https://app.vergara-jim.link/linux-tree/"
+}
