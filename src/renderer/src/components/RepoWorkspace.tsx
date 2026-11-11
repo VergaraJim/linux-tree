@@ -39,6 +39,7 @@ import type { Branch, Commit, FileChange, RepoState, Stash } from '../lib/types'
 import { ContextMenu, MenuBody, type MenuItem, type MenuState } from './ContextMenu'
 import { useDialog } from './Dialog'
 import { HistoryView } from './HistoryView'
+import { PushDialog } from './PushDialog'
 import { RebaseDialog } from './RebaseDialog'
 import { RemoteDialog, type RemoteDialogResult } from './RemoteDialog'
 import { Sidebar, type View } from './Sidebar'
@@ -73,6 +74,7 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
     then?: 'push' | 'pull'
     key: number
   } | null>(null)
+  const [pushDlg, setPushDlg] = useState<number | null>(null)
   const busyRef = useRef(false)
   const firstLoad = useRef(true)
 
@@ -208,30 +210,7 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
     await repo.push(head, to ? [to] : remotes, !!to || !hasUpstream)
   }
 
-  const doPush = async () => {
-    if (!head) return onError('HEAD is detached — check out a branch to push.')
-    const v = await dialog.prompt({
-      title: 'Push',
-      icon: <ArrowUpFromLine className="size-5" />,
-      message: (
-        <>
-          Push <b>{head}</b> to <b>{remote ?? '(no remote)'}</b>
-          {!currentBranch?.upstream && ' and set it as the upstream branch'}.
-        </>
-      ),
-      fields: [{ name: 'tags', label: 'Also push all tags', type: 'checkbox' }],
-      okLabel: 'Push'
-    })
-    if (!v) return
-    await run(
-      'Pushing…',
-      async () => {
-        await pushCurrent()
-        if (v.tags) await repo.pushRefs(remote, [], true)
-      },
-      `Pushed ${head}`
-    )
-  }
+  const doPush = () => setPushDlg(Date.now())
 
   const doCommit = (message: string, amend: boolean, push: boolean) =>
     run(push ? 'Committing and pushing…' : 'Committing…', async () => {
@@ -976,6 +955,19 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
             const base = rebase.base
             setRebase(null)
             run('Rebasing…', () => repo.interactiveRebase(base, todo), 'Rebase complete')
+          }}
+        />
+      )}
+      {pushDlg !== null && (
+        <PushDialog
+          key={pushDlg}
+          repo={repo}
+          branches={localBranches}
+          remotes={remotes}
+          onClose={() => setPushDlg(null)}
+          onDone={(names) => {
+            notifySuccess(names.length === 1 ? `Pushed ${names[0]}` : `Pushed ${names.length} branches`)
+            refresh()
           }}
         />
       )}
