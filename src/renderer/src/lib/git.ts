@@ -393,6 +393,19 @@ export class Repo {
     return this.run(['push', remote, ...refs, ...(tags ? ['--tags'] : [])])
   }
 
+  /** Push several local branches to one remote in as few commands as possible. */
+  async pushBranches(remote: string, branches: { local: string; remoteName: string; setUpstream: boolean }[], tags: boolean) {
+    if (!branches.length) throw new Error('Choose at least one branch to push.')
+    const withUpstream = branches.filter((b) => b.setUpstream)
+    const withoutUpstream = branches.filter((b) => !b.setUpstream)
+    for (const [group, up] of [[withUpstream, true], [withoutUpstream, false]] as const) {
+      if (!group.length) continue
+      const args = ['push', ...(up ? ['-u'] : []), remote, ...group.map((b) => `${b.local}:${b.remoteName}`)]
+      await this.run(args)
+    }
+    if (tags) await this.pushRefs(remote, [], true)
+  }
+
   checkout(ref: string) {
     return this.run(['checkout', ref])
   }
