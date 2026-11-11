@@ -26,6 +26,7 @@
   --diff-hunk-fg: oklch(0.5 0.12 255);
   --row-hover: color-mix(in oklab, var(--foreground) 4%, transparent);
   --row-selected: color-mix(in oklab, var(--accent) 14%, transparent);
+  --row-head: color-mix(in oklab, var(--accent) 6%, transparent);
   --graph-bg: var(--surface);
 }
 
@@ -41,6 +42,7 @@
   --diff-hunk-fg: oklch(0.8 0.08 255);
   --row-hover: color-mix(in oklab, var(--foreground) 5%, transparent);
   --row-selected: color-mix(in oklab, var(--accent) 22%, transparent);
+  --row-head: color-mix(in oklab, var(--accent) 10%, transparent);
   --graph-bg: var(--surface);
 }
 
@@ -79,7 +81,14 @@ body {
 .log-row:hover {
   background: var(--row-hover);
 }
-.log-row.selected {
+.log-row.head {
+  background: var(--row-head);
+}
+.log-row.head:not(.selected):hover {
+  background: color-mix(in oklab, var(--accent) 10%, transparent);
+}
+.log-row.selected,
+.log-row.head.selected {
   background: var(--row-selected);
 }
 .log-row.selected::before {
