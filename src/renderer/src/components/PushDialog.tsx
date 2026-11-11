@@ -1,6 +1,6 @@
 import { Button, Checkbox, Label, ListBox, Modal, Select, Spinner } from '@heroui/react'
 import { AlertCircle, ArrowUpFromLine } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { Repo } from '../lib/git'
 import type { Branch } from '../lib/types'
 
@@ -21,48 +21,52 @@ interface Row {
   ahead: boolean
 }
 
+function initialRemote(remotes: string[]): string {
+  return remotes.includes('origin') ? 'origin' : (remotes[0] ?? '')
+}
+
+function buildRows(branches: Branch[], remote: string): Row[] {
+  return branches
+    .map((b) => {
+      const tracked = !!b.upstream && !b.gone && b.upstream.startsWith(remote + '/')
+      return {
+        branch: b,
+        tracked,
+        remoteName: tracked ? b.upstream!.slice(remote.length + 1) : b.name,
+        status: tracked ? (b.ahead ? `${b.ahead} ahead` : 'up to date') : 'new',
+        ahead: tracked && b.ahead > 0
+      }
+    })
+    .sort((a, b) => {
+      if (a.branch.current !== b.branch.current) return a.branch.current ? -1 : 1
+      return a.branch.name.localeCompare(b.branch.name)
+    })
+}
+
+/** Default ticked / track flags for a set of rows: the current or ahead branches, tracking the untracked. */
+function defaultsFor(rows: Row[]): { checked: Record<string, boolean>; track: Record<string, boolean> } {
+  const checked: Record<string, boolean> = {}
+  const track: Record<string, boolean> = {}
+  for (const r of rows) {
+    checked[r.branch.name] = r.branch.current || r.ahead
+    track[r.branch.name] = !r.tracked
+  }
+  return { checked, track }
+}
+
 /** Sourcetree-style multi-branch push: pick a remote, tick branches, optionally push all tags. */
 export function PushDialog({ repo, branches, remotes, onClose, onDone }: Props) {
   const [isOpen, setIsOpen] = useState(true)
-  const [remote, setRemote] = useState(() => (remotes.includes('origin') ? 'origin' : (remotes[0] ?? '')))
-  const [checked, setChecked] = useState<Record<string, boolean>>({})
-  const [track, setTrack] = useState<Record<string, boolean>>({})
+  const [remote, setRemote] = useState(() => initialRemote(remotes))
+  // Defaults are applied when the dialog opens and when the remote changes; parent re-renders leave them alone.
+  const [initialDefaults] = useState(() => defaultsFor(buildRows(branches, remote)))
+  const [checked, setChecked] = useState<Record<string, boolean>>(initialDefaults.checked)
+  const [track, setTrack] = useState<Record<string, boolean>>(initialDefaults.track)
   const [pushTags, setPushTags] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const rows = useMemo<Row[]>(
-    () =>
-      branches
-        .map((b) => {
-          const tracked = !!b.upstream && !b.gone && b.upstream.startsWith(remote + '/')
-          return {
-            branch: b,
-            tracked,
-            remoteName: tracked ? b.upstream!.slice(remote.length + 1) : b.name,
-            status: tracked ? (b.ahead ? `${b.ahead} ahead` : 'up to date') : 'new',
-            ahead: tracked && b.ahead > 0
-          }
-        })
-        .sort((a, b) => {
-          if (a.branch.current !== b.branch.current) return a.branch.current ? -1 : 1
-          return a.branch.name.localeCompare(b.branch.name)
-        }),
-    [branches, remote]
-  )
-
-  // Re-derive the defaults whenever the target remote changes.
-  useEffect(() => {
-    const nextChecked: Record<string, boolean> = {}
-    const nextTrack: Record<string, boolean> = {}
-    for (const r of rows) {
-      nextChecked[r.branch.name] = r.branch.current || r.ahead
-      nextTrack[r.branch.name] = !r.tracked
-    }
-    setChecked(nextChecked)
-    setTrack(nextTrack)
-    setError(null)
-  }, [rows])
+  const rows = useMemo<Row[]>(() => buildRows(branches, remote), [branches, remote])
 
   const close = () => {
     setIsOpen(false)
@@ -128,7 +132,12 @@ export function PushDialog({ repo, branches, remotes, onClose, onDone }: Props) 
                   value={remote}
                   onChange={(k) => {
                     if (k !== null && !Array.isArray(k)) {
-                      setRemote(String(k))
+                      const next = String(k)
+                      setRemote(next)
+                      // Switching remote is the one place the defaults are re-applied.
+                      const defaults = defaultsFor(buildRows(branches, next))
+                      setChecked(defaults.checked)
+                      setTrack(defaults.track)
                       setError(null)
                     }
                   }}
