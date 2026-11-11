@@ -1,6 +1,6 @@
 {
   "name": "linux-tree",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "A Sourcetree-style Git GUI for Linux with built-in git-flow",
   "main": "./out/main/index.js",
   "scripts": {
