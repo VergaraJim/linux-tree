@@ -247,10 +247,11 @@ export function HistoryView({ repo, reloadKey, remotes, selectRef, onCommitMenu,
           {list.slice(start, end).map((c, k) => {
             const i = start + k
             const gi = indexOf.get(c.hash)!
+            const isHead = c.refs.some((r) => r.kind === 'head')
             return (
               <div
                 key={c.hash}
-                className={`log-row${selected === c.hash ? ' selected' : ''}`}
+                className={`log-row${isHead ? ' head' : ''}${selected === c.hash ? ' selected' : ''}`}
                 style={{ top: i * ROW_H, height: ROW_H }}
                 onMouseDown={() => setSelected(c.hash)}
                 onContextMenu={(e) => {
@@ -268,7 +269,7 @@ export function HistoryView({ repo, reloadKey, remotes, selectRef, onCommitMenu,
                       {r.name}
                     </span>
                   ))}
-                  <span className={`truncate ${c.parents.length > 1 ? 'text-muted' : ''}`}>{c.subject}</span>
+                  <span className={`truncate ${isHead ? 'font-medium' : ''} ${c.parents.length > 1 && !isHead ? 'text-muted' : ''}`}>{c.subject}</span>
                 </div>
                 <div className="w-36 flex-none px-2 text-xs text-muted tabular-nums">{formatDate(c.date)}</div>
                 <div className="flex w-44 flex-none items-center gap-2 px-2" title={c.email}>
@@ -405,7 +406,7 @@ const GraphCell = memo(function GraphCell({ commit: c, row, width }: { commit: C
   return (
     <svg width={width} height={ROW_H} className="block">
       {els}
-      {isHead && <circle cx={x} cy={mid} r={8} fill="none" stroke={color} strokeOpacity={0.35} strokeWidth={3} />}
+      {isHead && <circle cx={x} cy={mid} r={8} fill="none" stroke="var(--accent)" strokeWidth={2} />}
       {c.parents.length > 1 ? (
         <circle cx={x} cy={mid} r={4.5} fill="var(--graph-bg)" stroke={color} strokeWidth={2.5} />
       ) : (
