@@ -1,7 +1,5 @@
 # Linux Tree
 
-A Sourcetree-style Git GUI for Linux with built-in git-flow.
-
 Electron 33 · React 19 · TypeScript · [HeroUI v3](https://heroui.com) · Tailwind CSS v4
 
 ## Run
@@ -20,7 +18,7 @@ Install the package with `sudo apt install ./dist/linux-tree_*_amd64.deb`.
 ### Chromium sandbox on Ubuntu 23.10+ (dev mode)
 
 Ubuntu restricts unprivileged user namespaces via AppArmor, so a plain `npm run dev`
-aborts with *"The SUID sandbox helper binary was found, but is not configured correctly"*.
+aborts with _"The SUID sandbox helper binary was found, but is not configured correctly"_.
 The **.deb handles this automatically** (it installs an AppArmor profile, like Chrome/VS Code).
 For development, pick one:
 
@@ -81,18 +79,18 @@ Git runs without a terminal, so it never hangs on a hidden prompt:
 
 ## Keyboard shortcuts
 
-| Keys | Action |
-| --- | --- |
-| Ctrl+O | Open repository |
-| Ctrl+N | New repository |
-| Ctrl+T | Home screen (open another repository) |
-| Ctrl+W | Close tab |
+| Keys                      | Action                                          |
+| ------------------------- | ----------------------------------------------- |
+| Ctrl+O                    | Open repository                                 |
+| Ctrl+N                    | New repository                                  |
+| Ctrl+T                    | Home screen (open another repository)           |
+| Ctrl+W                    | Close tab                                       |
 | Ctrl+Tab / Ctrl+Shift+Tab | Next / previous tab (also Ctrl+PageDown/PageUp) |
-| Ctrl+1…8, Ctrl+9 | Jump to tab, last tab |
-| F5 or Ctrl+R | Refresh |
-| Ctrl+Enter | Commit (in the message box) |
-| Ctrl+= / Ctrl+- / Ctrl+0 | Zoom in / out / reset |
-| F12 or Ctrl+Shift+I | Developer tools |
+| Ctrl+1…8, Ctrl+9          | Jump to tab, last tab                           |
+| F5 or Ctrl+R              | Refresh                                         |
+| Ctrl+Enter                | Commit (in the message box)                     |
+| Ctrl+= / Ctrl+- / Ctrl+0  | Zoom in / out / reset                           |
+| F12 or Ctrl+Shift+I       | Developer tools                                 |
 
 App data (recent repositories, open tabs) lives in `~/.config/Linux Tree/settings.json`.
 
