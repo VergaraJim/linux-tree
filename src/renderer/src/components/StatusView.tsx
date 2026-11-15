@@ -1,5 +1,5 @@
 import { Button, Checkbox, TextArea } from '@heroui/react'
-import { AlertTriangle, Check, CheckCheck, FileDiff, Minus, Plus, Undo2 } from 'lucide-react'
+import { AlertTriangle, Check, CheckCheck, FileDiff, Minus, Plus, Trash2, Undo2 } from 'lucide-react'
 import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import type { Repo } from '../lib/git'
 import type { FileChange, WorkingStatus } from '../lib/types'
@@ -43,6 +43,18 @@ export function StatusView({ repo, status, reloadKey, operation, run, onCommit, 
     s ? (s.staged ? status.staged : unstagedAll).find((f) => f.path === s.path) : undefined
   const selFile = find(primary)
 
+  const selFiles = (staged: boolean): FileChange[] => {
+    const list = staged ? status.staged : unstagedAll
+    return selected
+      .filter((s) => s.staged === staged)
+      .map((s) => list.find((f) => f.path === s.path))
+      .filter((f): f is FileChange => !!f)
+  }
+  const stagedSel = selFiles(true)
+  const unstagedSel = selFiles(false)
+  const canDiscard = unstagedSel.length > 0 && unstagedSel.every((f) => f.status !== '?' && f.status !== 'U')
+  const canDelete = unstagedSel.length > 0 && unstagedSel.every((f) => f.status === '?')
+
   // Keep the selection valid after refreshes.
   useEffect(() => {
     setSelected((prev) => {
@@ -82,6 +94,31 @@ export function StatusView({ repo, status, reloadKey, operation, run, onCommit, 
   const discardFile = async (f: FileChange) => {
     if (await dialog.confirm('Discard changes', <>Discard all changes to <b>{f.path}</b>? This cannot be undone.</>, 'Discard', true))
       run('Discarding…', () => repo.discard([f]))
+  }
+
+  // Batch actions on the current multi-selection.
+  const stageSelected = async () => {
+    if (!unstagedSel.length) return
+    if (await run('Staging…', () => repo.stage(unstagedSel.map((f) => f.path)))) setSelected([])
+  }
+
+  const unstageSelected = async () => {
+    if (!stagedSel.length) return
+    if (await run('Unstaging…', () => repo.unstage(stagedSel.map((f) => f.path)))) setSelected([])
+  }
+
+  const discardSelected = async () => {
+    const n = unstagedSel.length
+    if (!n || !canDiscard) return
+    if (!(await dialog.confirm('Discard changes', <>Discard changes to <b>{n}</b> files? This cannot be undone.</>, 'Discard', true))) return
+    if (await run('Discarding…', () => repo.discard(unstagedSel))) setSelected([])
+  }
+
+  const deleteSelected = async () => {
+    const n = unstagedSel.length
+    if (!n || !canDelete) return
+    if (!(await dialog.confirm('Delete files', <>Delete <b>{n}</b> new files? This cannot be undone.</>, 'Delete', true))) return
+    if (await run('Deleting…', () => repo.discard(unstagedSel))) setSelected([])
   }
 
   // Stage / unstage / discard a hunk or selected lines.
@@ -239,15 +276,22 @@ export function StatusView({ repo, status, reloadKey, operation, run, onCommit, 
             files: status.staged,
             staged: true,
             action: (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-6 gap-1 px-2 text-xs"
-                isDisabled={!status.staged.length}
-                onPress={() => run('Unstaging…', () => repo.unstage(status.staged.map((f) => f.path)))}
-              >
-                <Minus className="size-3.5" /> Unstage all
-              </Button>
+              <>
+                {stagedSel.length > 0 && (
+                  <Button size="sm" variant="secondary" className="mr-1 h-6 px-2 text-xs" onPress={unstageSelected}>
+                    <Minus className="size-3.5" /> Unstage {stagedSel.length}
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 gap-1 px-2 text-xs"
+                  isDisabled={!status.staged.length}
+                  onPress={() => run('Unstaging…', () => repo.unstage(status.staged.map((f) => f.path)))}
+                >
+                  <Minus className="size-3.5" /> Unstage all
+                </Button>
+              </>
             )
           })}
           <div className="h-px flex-none bg-separator" />
@@ -257,15 +301,41 @@ export function StatusView({ repo, status, reloadKey, operation, run, onCommit, 
             files: unstagedAll,
             staged: false,
             action: (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-6 gap-1 px-2 text-xs"
-                isDisabled={!unstagedAll.length}
-                onPress={() => run('Staging…', () => repo.run(['add', '-A']))}
-              >
-                <CheckCheck className="size-3.5" /> Stage all
-              </Button>
+              <>
+                {unstagedSel.length > 0 && (
+                  <>
+                    <Button size="sm" variant="primary" className="h-6 px-2 text-xs" onPress={stageSelected}>
+                      <Plus className="size-3.5" />{' '}
+                      {unstagedSel.length === 1 ? 'Stage 1 file' : `Stage ${unstagedSel.length} files`}
+                    </Button>
+                    <span
+                      className="ml-1 inline-block align-middle"
+                      title={canDiscard ? undefined : 'Only files with modifications can be discarded — new and conflicted files are not allowed'}
+                    >
+                      <Button size="sm" variant="danger-soft" className="h-6 px-2 text-xs" isDisabled={!canDiscard} onPress={discardSelected}>
+                        <Undo2 className="size-3.5" /> Discard {unstagedSel.length}
+                      </Button>
+                    </span>
+                    <span
+                      className="ml-1 inline-block align-middle"
+                      title={canDelete ? undefined : 'Only new (untracked, status “?”) files can be deleted'}
+                    >
+                      <Button size="sm" variant="danger-soft" className="h-6 px-2 text-xs" isDisabled={!canDelete} onPress={deleteSelected}>
+                        <Trash2 className="size-3.5" /> Delete {unstagedSel.length}
+                      </Button>
+                    </span>
+                  </>
+                )}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 gap-1 px-2 text-xs"
+                  isDisabled={!unstagedAll.length}
+                  onPress={() => run('Staging…', () => repo.run(['add', '-A']))}
+                >
+                  <CheckCheck className="size-3.5" /> Stage all
+                </Button>
+              </>
             )
           })}
         </div>
