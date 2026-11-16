@@ -321,6 +321,29 @@ export class Repo {
     if (untracked.length) await this.run(['clean', '-f', '-q', '--', ...untracked])
   }
 
+  /** Contents of the three conflict stages of an unmerged path: 1 = base, 2 = ours, 3 = theirs.
+   *  A stage that does not exist (added on one side only, modify/delete, …) comes back as ''. */
+  async conflictStages(path: string): Promise<{ base: string; ours: string; theirs: string }> {
+    const show = async (n: number) => (await this.tryRun(['show', `:${n}:${path}`])) ?? ''
+    const [base, ours, theirs] = await Promise.all([show(1), show(2), show(3)])
+    return { base, ours, theirs }
+  }
+
+  /** Resolve a conflict by taking one side. When that side has no blob (the file was deleted on
+   *  that side) the path is removed from the index and the working tree instead. */
+  async checkoutSide(path: string, side: 'ours' | 'theirs'): Promise<void> {
+    const n = side === 'ours' ? 2 : 3
+    const has = (await this.tryRun(['cat-file', '-e', `:${n}:${path}`])) !== null
+    if (has) await this.run(['checkout', `--${side}`, '--', path])
+    else await this.run(['rm', '-f', '--', path])
+    await this.stage([path])
+  }
+
+  /** Resolve a conflict by deleting the path. */
+  resolveDeleted(path: string) {
+    return this.run(['rm', '-f', '--', path])
+  }
+
   /** Apply a partial patch. target: 'stage' | 'unstage' (index) | 'discard' (working tree). */
   applyPatch(patch: string, target: 'stage' | 'unstage' | 'discard') {
     const args = ['apply', '--recount', '--whitespace=nowarn']
