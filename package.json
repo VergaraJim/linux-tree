@@ -1,6 +1,6 @@
 {
   "name": "linux-tree",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A Sourcetree-style Git GUI for Linux with built-in git-flow",
   "main": "./out/main/index.js",
   "scripts": {
@@ -8,7 +8,8 @@
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit",
-    "dist:deb": "electron-vite build && electron-builder --linux deb"
+    "dist:deb": "electron-vite build && electron-builder --linux deb",
+    "dist:flatpak": "electron-vite build && electron-builder --linux flatpak"
   },
   "license": "MIT",
   "dependencies": {},
@@ -46,7 +47,7 @@
     "email": "vergarajim.info@gmail.com"
   },
   "build": {
-    "appId": "com.jimvergara.linuxtree",
+    "appId": "link.vergara-jim.linuxtree",
     "productName": "Linux Tree",
     "directories": {
       "output": "dist",
@@ -58,7 +59,8 @@
     ],
     "linux": {
       "target": [
-        "deb"
+        "deb",
+        "flatpak"
       ],
       "category": "Development",
       "icon": "build/icon.png",
@@ -86,6 +88,64 @@
       ],
       "afterInstall": "build/after-install.sh",
       "afterRemove": "build/after-remove.sh"
+    },
+    "flatpak": {
+      "runtime": "org.freedesktop.Platform",
+      "runtimeVersion": "26.08",
+      "sdk": "org.freedesktop.Sdk",
+      "base": "org.electronjs.Electron2.BaseApp",
+      "baseVersion": "26.08",
+      "branch": "master",
+      "useWaylandFlags": false,
+      "artifactName": "linux-tree_${version}_${arch}.flatpak",
+      "finishArgs": [
+        "--socket=wayland",
+        "--socket=fallback-x11",
+        "--share=ipc",
+        "--device=dri",
+        "--socket=pulseaudio",
+        "--socket=ssh-auth",
+        "--filesystem=home",
+        "--filesystem=/media",
+        "--filesystem=/run/media",
+        "--share=network",
+        "--talk-name=org.freedesktop.Notifications",
+        "--talk-name=org.freedesktop.secrets"
+      ],
+      "modules": [
+        {
+          "name": "git",
+          "buildsystem": "simple",
+          "build-commands": [
+            "make -j $FLATPAK_BUILDER_N_JOBS CFLAGS=\"-O2 -g -std=gnu17\" prefix=/app NO_GETTEXT=1 NO_TCLTK=1 NO_PERL=1 NO_PYTHON=1 NO_INSTALL_HARDLINKS=1 all",
+            "make CFLAGS=\"-O2 -g -std=gnu17\" prefix=/app NO_GETTEXT=1 NO_TCLTK=1 NO_PERL=1 NO_PYTHON=1 NO_INSTALL_HARDLINKS=1 install"
+          ],
+          "sources": [
+            {
+              "type": "git",
+              "url": "https://github.com/git/git.git",
+              "tag": "v2.47.1"
+            }
+          ]
+        },
+        {
+          "name": "openssh",
+          "buildsystem": "simple",
+          "build-commands": [
+            "autoreconf",
+            "./configure --prefix=/app --sysconfdir=/app/etc/ssh --with-ssl-dir=/usr --without-pam --without-selinux --without-audit --without-kerberos5 --without-libedit --disable-strip",
+            "make -j $FLATPAK_BUILDER_N_JOBS ssh scp sftp ssh-keygen ssh-keyscan",
+            "mkdir -p /app/bin && install -m755 ssh scp sftp ssh-keygen ssh-keyscan /app/bin/"
+          ],
+          "sources": [
+            {
+              "type": "git",
+              "url": "https://github.com/openssh/openssh-portable.git",
+              "tag": "V_10_0_P1"
+            }
+          ]
+        }
+      ]
     }
   },
   "homepage": "https://app.vergara-jim.link/linux-tree/"

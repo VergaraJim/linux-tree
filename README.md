@@ -15,6 +15,45 @@ Requires `git` on your PATH. No `git-flow` CLI needed.
 
 Install the package with `sudo apt install ./dist/linux-tree_*_amd64.deb`.
 
+### Flatpak
+
+```bash
+npm run dist:flatpak         # package → dist/linux-tree_<version>_x86_64.flatpak
+```
+
+Host requirements and setup:
+
+```bash
+sudo apt install flatpak flatpak-builder
+flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+flatpak install --user -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08 org.electronjs.Electron2.BaseApp//24.08
+```
+
+Install and run:
+
+```bash
+flatpak install --user dist/linux-tree_*_x86_64.flatpak
+flatpak run link.vergara_jim.linuxtree
+```
+
+The Flatpak application id is the config `appId` with the dash turned into an underscore
+(`link.vergara-jim.linuxtree` → `link.vergara_jim.linuxtree`).
+
+Sandbox notes:
+
+- `git` and the OpenSSH client are built into the bundle — a flatpak cannot run the host's `git`.
+- `$HOME` is accessible read/write via `--filesystem=home`, so `~/.gitconfig`, `~/.ssh` and
+  repositories under your home directory work as usual.
+- The ssh-agent is forwarded via `--socket=ssh-auth`.
+- Settings and recent repositories live in
+  `~/.var/app/link.vergara_jim.linuxtree/config/Linux Tree/` instead of
+  `~/.config/Linux Tree/` and are **not** migrated.
+- HTTPS credentials only work through a git credential helper that exists inside the sandbox
+  (`store` / `cache` in `~/.gitconfig` work; a helper at a host path such as
+  `/usr/lib/git-core/git-credential-libsecret` does not).
+- The AppArmor / `chrome-sandbox` notes below apply to the deb and dev runs only, not to the
+  flatpak (zypak handles it).
+
 ### Chromium sandbox on Ubuntu 23.10+ (dev mode)
 
 Ubuntu restricts unprivileged user namespaces via AppArmor, so a plain `npm run dev`
@@ -97,7 +136,8 @@ App data (recent repositories, open tabs) lives in `~/.config/Linux Tree/setting
 ## Layout
 
 ```
-build/             Icon + .deb install/remove scripts (AppArmor profile)
+build/             Icon + .deb install/remove scripts (AppArmor profile);
+                   Flatpak module definitions live in package.json (build.flatpak)
 src/main/          Electron main process (runs git, dialogs, settings, SSH askpass)
 src/preload/       Bridge exposed as window.api
 src/renderer/src/
