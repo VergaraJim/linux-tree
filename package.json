@@ -91,10 +91,10 @@
     },
     "flatpak": {
       "runtime": "org.freedesktop.Platform",
-      "runtimeVersion": "24.08",
+      "runtimeVersion": "26.08",
       "sdk": "org.freedesktop.Sdk",
       "base": "org.electronjs.Electron2.BaseApp",
-      "baseVersion": "24.08",
+      "baseVersion": "26.08",
       "branch": "master",
       "useWaylandFlags": false,
       "artifactName": "linux-tree_${version}_${arch}.flatpak",
@@ -106,6 +106,8 @@
         "--socket=pulseaudio",
         "--socket=ssh-auth",
         "--filesystem=home",
+        "--filesystem=/media",
+        "--filesystem=/run/media",
         "--share=network",
         "--talk-name=org.freedesktop.Notifications",
         "--talk-name=org.freedesktop.secrets"
@@ -115,8 +117,8 @@
           "name": "git",
           "buildsystem": "simple",
           "build-commands": [
-            "make -j $FLATPAK_BUILDER_N_JOBS prefix=/app NO_GETTEXT=1 NO_TCLTK=1 NO_PERL=1 NO_PYTHON=1 NO_INSTALL_HARDLINKS=1 all",
-            "make prefix=/app NO_GETTEXT=1 NO_TCLTK=1 NO_PERL=1 NO_PYTHON=1 NO_INSTALL_HARDLINKS=1 install"
+            "make -j $FLATPAK_BUILDER_N_JOBS CFLAGS=\"-O2 -g -std=gnu17\" prefix=/app NO_GETTEXT=1 NO_TCLTK=1 NO_PERL=1 NO_PYTHON=1 NO_INSTALL_HARDLINKS=1 all",
+            "make CFLAGS=\"-O2 -g -std=gnu17\" prefix=/app NO_GETTEXT=1 NO_TCLTK=1 NO_PERL=1 NO_PYTHON=1 NO_INSTALL_HARDLINKS=1 install"
           ],
           "sources": [
             {
@@ -131,7 +133,6 @@
           "buildsystem": "simple",
           "build-commands": [
             "autoreconf",
-            "sed -i 's/SSH_PORTABLE\\t\"p2\"/SSH_PORTABLE\\t\"p1\"/' version.h",
             "./configure --prefix=/app --sysconfdir=/app/etc/ssh --with-ssl-dir=/usr --without-pam --without-selinux --without-audit --without-kerberos5 --without-libedit --disable-strip",
             "make -j $FLATPAK_BUILDER_N_JOBS ssh scp sftp ssh-keygen ssh-keyscan",
             "mkdir -p /app/bin && install -m755 ssh scp sftp ssh-keygen ssh-keyscan /app/bin/"

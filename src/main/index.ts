@@ -3,6 +3,7 @@ import { spawn } from 'child_process'
 import { join, dirname, resolve } from 'path'
 import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, readdirSync } from 'fs'
 import { askpassEnv, startAskpass, tmpDir } from './askpass'
+import { migrateLegacySettings } from './migrate-settings'
 
 export interface GitResult {
   ok: boolean
@@ -139,6 +140,11 @@ ipcMain.handle('fs:exists', (_e, cwd: string, p: string) => existsSync(resolve(c
 ipcMain.handle('clipboard:write', (_e, t: string) => clipboard.writeText(t))
 
 app.whenReady().then(() => {
+  migrateLegacySettings({
+    settingsPath: settingsFile(),
+    homeDir: app.getPath('home'),
+    sandboxed: !!process.env.FLATPAK_ID
+  })
   Menu.setApplicationMenu(null)
   startAskpass()
   createWindow()
