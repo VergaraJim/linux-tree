@@ -131,7 +131,6 @@
           "buildsystem": "simple",
           "build-commands": [
             "autoreconf",
-            "sed -i 's/SSH_PORTABLE\\t\"p2\"/SSH_PORTABLE\\t\"p1\"/' version.h",
             "./configure --prefix=/app --sysconfdir=/app/etc/ssh --with-ssl-dir=/usr --without-pam --without-selinux --without-audit --without-kerberos5 --without-libedit --disable-strip",
             "make -j $FLATPAK_BUILDER_N_JOBS ssh scp sftp ssh-keygen ssh-keyscan",
             "mkdir -p /app/bin && install -m755 ssh scp sftp ssh-keygen ssh-keyscan /app/bin/"
