@@ -106,6 +106,8 @@
         "--socket=pulseaudio",
         "--socket=ssh-auth",
         "--filesystem=home",
+        "--filesystem=/media",
+        "--filesystem=/run/media",
         "--share=network",
         "--talk-name=org.freedesktop.Notifications",
         "--talk-name=org.freedesktop.secrets"
