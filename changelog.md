@@ -1,3 +1,7 @@
+# 1.0.2
+
+- Added flatpak
+
 # 1.0.1
 
 - Added multi select for the files edit list
