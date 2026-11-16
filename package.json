@@ -91,10 +91,10 @@
     },
     "flatpak": {
       "runtime": "org.freedesktop.Platform",
-      "runtimeVersion": "24.08",
+      "runtimeVersion": "26.08",
       "sdk": "org.freedesktop.Sdk",
       "base": "org.electronjs.Electron2.BaseApp",
-      "baseVersion": "24.08",
+      "baseVersion": "26.08",
       "branch": "master",
       "useWaylandFlags": false,
       "artifactName": "linux-tree_${version}_${arch}.flatpak",
@@ -117,8 +117,8 @@
           "name": "git",
           "buildsystem": "simple",
           "build-commands": [
-            "make -j $FLATPAK_BUILDER_N_JOBS prefix=/app NO_GETTEXT=1 NO_TCLTK=1 NO_PERL=1 NO_PYTHON=1 NO_INSTALL_HARDLINKS=1 all",
-            "make prefix=/app NO_GETTEXT=1 NO_TCLTK=1 NO_PERL=1 NO_PYTHON=1 NO_INSTALL_HARDLINKS=1 install"
+            "make -j $FLATPAK_BUILDER_N_JOBS CFLAGS=\"-O2 -g -std=gnu17\" prefix=/app NO_GETTEXT=1 NO_TCLTK=1 NO_PERL=1 NO_PYTHON=1 NO_INSTALL_HARDLINKS=1 all",
+            "make CFLAGS=\"-O2 -g -std=gnu17\" prefix=/app NO_GETTEXT=1 NO_TCLTK=1 NO_PERL=1 NO_PYTHON=1 NO_INSTALL_HARDLINKS=1 install"
           ],
           "sources": [
             {
