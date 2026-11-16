@@ -109,6 +109,23 @@
         "--share=network",
         "--talk-name=org.freedesktop.Notifications",
         "--talk-name=org.freedesktop.secrets"
+      ],
+      "modules": [
+        {
+          "name": "git",
+          "buildsystem": "simple",
+          "build-commands": [
+            "make -j $FLATPAK_BUILDER_N_JOBS prefix=/app NO_GETTEXT=1 NO_TCLTK=1 NO_PERL=1 NO_PYTHON=1 NO_INSTALL_HARDLINKS=1 all",
+            "make prefix=/app NO_GETTEXT=1 NO_TCLTK=1 NO_PERL=1 NO_PYTHON=1 NO_INSTALL_HARDLINKS=1 install"
+          ],
+          "sources": [
+            {
+              "type": "git",
+              "url": "https://github.com/git/git.git",
+              "tag": "v2.47.1"
+            }
+          ]
+        }
       ]
     }
   },
