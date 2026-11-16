@@ -5,7 +5,6 @@ import {
   ArrowDownToLine,
   ArrowRightLeft,
   ArrowUpFromLine,
-  Check,
   Cherry,
   Clipboard,
   Cloud,
@@ -36,6 +35,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } fr
 import { Repo } from '../lib/git'
 import { classify, finishFlow, FLOW_DEFAULTS, initFlow, readFlowConfig, startFlow, type FlowConfig, type FlowType } from '../lib/gitflow'
 import type { Branch, Commit, FileChange, RepoState, Stash } from '../lib/types'
+import { ConflictResolver } from './ConflictResolver'
 import { ContextMenu, MenuBody, type MenuItem, type MenuState } from './ContextMenu'
 import { useDialog } from './Dialog'
 import { HistoryView } from './HistoryView'
@@ -75,6 +75,7 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
     key: number
   } | null>(null)
   const [pushDlg, setPushDlg] = useState<number | null>(null)
+  const [conflictDlg, setConflictDlg] = useState<{ key: number; initialPath?: string } | null>(null)
   const busyRef = useRef(false)
   const firstLoad = useRef(true)
 
@@ -748,24 +749,10 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
   const fileMenu = (e: MouseEvent, f: FileChange, staged: boolean) => {
     const items: MenuItem[] = []
     if (f.status === 'U') {
-      items.push({ label: 'Mark resolved (stage)', action: () => run('Staging…', () => repo.stage([f.path])), icon: <Check className={I} /> })
       items.push({
-        label: 'Resolve using mine (ours)',
-        icon: <ArrowRightLeft className={I} />,
-        action: () =>
-          run('Resolving…', async () => {
-            await repo.run(['checkout', '--ours', '--', f.path])
-            await repo.stage([f.path])
-          })
-      })
-      items.push({
-        label: 'Resolve using theirs',
-        icon: <ArrowRightLeft className={I} />,
-        action: () =>
-          run('Resolving…', async () => {
-            await repo.run(['checkout', '--theirs', '--', f.path])
-            await repo.stage([f.path])
-          })
+        label: 'Resolve conflicts…',
+        icon: <GitMerge className={I} />,
+        action: () => setConflictDlg({ key: Date.now(), initialPath: f.path })
       })
     } else if (staged) {
       items.push({ label: 'Unstage', action: () => run('Unstaging…', () => repo.unstage([f.path])), icon: <Minus className={I} /> })
@@ -920,6 +907,11 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
             </Button>
           </span>
         )}
+        {state && state.status.conflicted.length > 0 && (
+          <Button size="sm" variant="danger-soft" className="h-6 px-2 text-xs" onPress={() => setConflictDlg({ key: Date.now() })}>
+            Resolve {state.status.conflicted.length} conflict{state.status.conflicted.length === 1 ? '' : 's'}
+          </Button>
+        )}
         <span className="truncate font-mono text-[11px] opacity-70" title={repo.path}>
           {repo.path}
         </span>
@@ -969,6 +961,16 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
             notifySuccess(names.length === 1 ? `Pushed ${names[0]}` : `Pushed ${names.length} branches`)
             refresh()
           }}
+        />
+      )}
+      {conflictDlg && state && state.status.conflicted.length > 0 && (
+        <ConflictResolver
+          key={conflictDlg.key}
+          repo={repo}
+          files={state.status.conflicted}
+          initialPath={conflictDlg.initialPath}
+          run={run}
+          onClose={() => setConflictDlg(null)}
         />
       )}
       {remoteDlg && (

@@ -1,6 +1,6 @@
 import { Button, Checkbox, TextArea } from '@heroui/react'
-import { AlertTriangle, Check, CheckCheck, FileDiff, Minus, Plus, Undo2 } from 'lucide-react'
-import { useEffect, useState, type MouseEvent } from 'react'
+import { AlertTriangle, Check, CheckCheck, FileDiff, Minus, Plus, Trash2, Undo2 } from 'lucide-react'
+import { useEffect, useRef, useState, type MouseEvent } from 'react'
 import type { Repo } from '../lib/git'
 import type { FileChange, WorkingStatus } from '../lib/types'
 import { buildPatch, parseDiff } from '../lib/patch'
@@ -20,11 +20,12 @@ interface Props {
   onError: (e: unknown) => void
 }
 
-type Sel = { path: string; staged: boolean } | null
+type Row = { path: string; staged: boolean }
 
 export function StatusView({ repo, status, reloadKey, operation, run, onCommit, onFileMenu, onError }: Props) {
   const dialog = useDialog()
-  const [sel, setSel] = useState<Sel>(null)
+  const [selected, setSelected] = useState<Row[]>([])
+  const anchor = useRef<Row | null>(null)
   const [diff, setDiff] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [amend, setAmend] = useState(false)
@@ -37,31 +38,49 @@ export function StatusView({ repo, status, reloadKey, operation, run, onCommit, 
   })
 
   const unstagedAll = [...status.conflicted, ...status.unstaged]
-  const find = (s: Sel): FileChange | undefined => (s ? (s.staged ? status.staged : unstagedAll).find((f) => f.path === s.path) : undefined)
-  const selFile = find(sel)
+  const primary: Row | null = selected.length ? selected[selected.length - 1] : null
+  const find = (s: Row | null): FileChange | undefined =>
+    s ? (s.staged ? status.staged : unstagedAll).find((f) => f.path === s.path) : undefined
+  const selFile = find(primary)
 
-  // Keep a valid selection after refreshes.
+  const selFiles = (staged: boolean): FileChange[] => {
+    const list = staged ? status.staged : unstagedAll
+    return selected
+      .filter((s) => s.staged === staged)
+      .map((s) => list.find((f) => f.path === s.path))
+      .filter((f): f is FileChange => !!f)
+  }
+  const stagedSel = selFiles(true)
+  const unstagedSel = selFiles(false)
+  const canDiscard = unstagedSel.length > 0 && unstagedSel.every((f) => f.status !== '?' && f.status !== 'U')
+  const canDelete = unstagedSel.length > 0 && unstagedSel.every((f) => f.status === '?')
+
+  // Keep the selection valid after refreshes.
   useEffect(() => {
-    if (sel && !selFile) {
-      const other = (sel.staged ? unstagedAll : status.staged).find((f) => f.path === sel.path)
-      setSel(other ? { path: other.path, staged: !sel.staged } : null)
-    }
+    setSelected((prev) => {
+      const next: Row[] = []
+      for (const s of prev) {
+        if ((s.staged ? status.staged : unstagedAll).some((f) => f.path === s.path)) next.push(s)
+        else if ((s.staged ? unstagedAll : status.staged).some((f) => f.path === s.path)) next.push({ path: s.path, staged: !s.staged })
+      }
+      return next.length === prev.length && next.every((r, i) => r.path === prev[i].path && r.staged === prev[i].staged) ? prev : next
+    })
   }, [status])
 
   useEffect(() => {
-    if (!selFile || !sel) {
+    if (!selFile || !primary) {
       setDiff(null)
       return
     }
     let cancelled = false
     repo
-      .workingDiff(selFile, sel.staged)
+      .workingDiff(selFile, primary.staged)
       .then((d) => !cancelled && setDiff(d))
       .catch(onError)
     return () => {
       cancelled = true
     }
-  }, [sel?.path, sel?.staged, reloadKey, repo])
+  }, [primary?.path, primary?.staged, reloadKey, repo])
 
   // Amend: prefill the last commit message.
   useEffect(() => {
@@ -77,9 +96,34 @@ export function StatusView({ repo, status, reloadKey, operation, run, onCommit, 
       run('Discarding…', () => repo.discard([f]))
   }
 
+  // Batch actions on the current multi-selection.
+  const stageSelected = async () => {
+    if (!unstagedSel.length) return
+    if (await run('Staging…', () => repo.stage(unstagedSel.map((f) => f.path)))) setSelected([])
+  }
+
+  const unstageSelected = async () => {
+    if (!stagedSel.length) return
+    if (await run('Unstaging…', () => repo.unstage(stagedSel.map((f) => f.path)))) setSelected([])
+  }
+
+  const discardSelected = async () => {
+    const n = unstagedSel.length
+    if (!n || !canDiscard) return
+    if (!(await dialog.confirm('Discard changes', <>Discard changes to <b>{n}</b> files? This cannot be undone.</>, 'Discard', true))) return
+    if (await run('Discarding…', () => repo.discard(unstagedSel))) setSelected([])
+  }
+
+  const deleteSelected = async () => {
+    const n = unstagedSel.length
+    if (!n || !canDelete) return
+    if (!(await dialog.confirm('Delete files', <>Delete <b>{n}</b> new files? This cannot be undone.</>, 'Delete', true))) return
+    if (await run('Deleting…', () => repo.discard(unstagedSel))) setSelected([])
+  }
+
   // Stage / unstage / discard a hunk or selected lines.
   const applyPartial = async (hunkIndex: number, offsets: number[] | null, target: PatchTarget) => {
-    if (!selFile || !sel) return
+    if (!selFile || !primary) return
     const file = selFile
     if (
       target === 'discard' &&
@@ -122,17 +166,41 @@ export function StatusView({ repo, status, reloadKey, operation, run, onCommit, 
   const canCommit = !!message.trim() && (status.staged.length > 0 || amend) && status.conflicted.length === 0
   const subjectLen = message.split('\n')[0].length
 
+  const selectRow = (e: MouseEvent, f: FileChange, staged: boolean, files: FileChange[]) => {
+    const row: Row = { path: f.path, staged }
+    const sameList = anchor.current?.staged === staged
+    if (e.shiftKey && sameList && primary?.staged === staged) {
+      const a = files.findIndex((x) => x.path === anchor.current!.path)
+      const b = files.findIndex((x) => x.path === f.path)
+      if (a >= 0 && b >= 0) {
+        const [lo, hi] = a <= b ? [a, b] : [b, a]
+        setSelected(files.slice(lo, hi + 1).map((x) => ({ path: x.path, staged })))
+        return
+      }
+    }
+    if ((e.metaKey || e.ctrlKey) && primary?.staged === staged) {
+      setSelected((prev) =>
+        prev.some((s) => s.path === row.path) ? prev.filter((s) => s.path !== row.path) : [...prev, row]
+      )
+      anchor.current = row
+      return
+    }
+    setSelected([row])
+    anchor.current = row
+  }
+
   const renderList = (files: FileChange[], staged: boolean) =>
     files.map((f) => {
-      const isSel = sel?.path === f.path && sel.staged === staged
+      const isSel = selected.some((s) => s.path === f.path && s.staged === staged)
       return (
         <div
           key={(staged ? 's:' : 'u:') + f.path}
           className={`list-row group h-7 px-2 ${isSel ? 'selected' : ''}`}
-          onClick={() => setSel({ path: f.path, staged })}
+          onClick={(e) => selectRow(e, f, staged, files)}
           onDoubleClick={() => toggleFile(f, staged)}
           onContextMenu={(e) => {
-            setSel({ path: f.path, staged })
+            setSelected([{ path: f.path, staged }])
+            anchor.current = { path: f.path, staged }
             onFileMenu(e, f, staged)
           }}
           title={f.oldPath ? `${f.oldPath} → ${f.path}` : f.path}
@@ -208,15 +276,22 @@ export function StatusView({ repo, status, reloadKey, operation, run, onCommit, 
             files: status.staged,
             staged: true,
             action: (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-6 gap-1 px-2 text-xs"
-                isDisabled={!status.staged.length}
-                onPress={() => run('Unstaging…', () => repo.unstage(status.staged.map((f) => f.path)))}
-              >
-                <Minus className="size-3.5" /> Unstage all
-              </Button>
+              <>
+                {stagedSel.length > 0 && (
+                  <Button size="sm" variant="secondary" className="mr-1 h-6 px-2 text-xs" onPress={unstageSelected}>
+                    <Minus className="size-3.5" /> Unstage {stagedSel.length}
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 gap-1 px-2 text-xs"
+                  isDisabled={!status.staged.length}
+                  onPress={() => run('Unstaging…', () => repo.unstage(status.staged.map((f) => f.path)))}
+                >
+                  <Minus className="size-3.5" /> Unstage all
+                </Button>
+              </>
             )
           })}
           <div className="h-px flex-none bg-separator" />
@@ -226,42 +301,69 @@ export function StatusView({ repo, status, reloadKey, operation, run, onCommit, 
             files: unstagedAll,
             staged: false,
             action: (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-6 gap-1 px-2 text-xs"
-                isDisabled={!unstagedAll.length}
-                onPress={() => run('Staging…', () => repo.run(['add', '-A']))}
-              >
-                <CheckCheck className="size-3.5" /> Stage all
-              </Button>
+              <>
+                {unstagedSel.length > 0 && (
+                  <>
+                    <Button size="sm" variant="primary" className="h-6 px-2 text-xs" onPress={stageSelected}>
+                      <Plus className="size-3.5" />{' '}
+                      {unstagedSel.length === 1 ? 'Stage 1 file' : `Stage ${unstagedSel.length} files`}
+                    </Button>
+                    <span
+                      className="ml-1 inline-block align-middle"
+                      title={canDiscard ? undefined : 'Only files with modifications can be discarded — new and conflicted files are not allowed'}
+                    >
+                      <Button size="sm" variant="danger-soft" className="h-6 px-2 text-xs" isDisabled={!canDiscard} onPress={discardSelected}>
+                        <Undo2 className="size-3.5" /> Discard {unstagedSel.length}
+                      </Button>
+                    </span>
+                    <span
+                      className="ml-1 inline-block align-middle"
+                      title={canDelete ? undefined : 'Only new (untracked, status “?”) files can be deleted'}
+                    >
+                      <Button size="sm" variant="danger-soft" className="h-6 px-2 text-xs" isDisabled={!canDelete} onPress={deleteSelected}>
+                        <Trash2 className="size-3.5" /> Delete {unstagedSel.length}
+                      </Button>
+                    </span>
+                  </>
+                )}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 gap-1 px-2 text-xs"
+                  isDisabled={!unstagedAll.length}
+                  onPress={() => run('Staging…', () => repo.run(['add', '-A']))}
+                >
+                  <CheckCheck className="size-3.5" /> Stage all
+                </Button>
+              </>
             )
           })}
         </div>
         <div className="flex min-w-0 flex-1 flex-col">
-          {selFile && sel ? (
+          {selFile && primary ? (
             <div className="flex h-9 flex-none items-center gap-2 border-b border-separator px-3 text-sm">
               <StatusIcon status={selFile.status} />
               <span className="min-w-0 truncate font-medium">
                 <FileName path={selFile.path} />
               </span>
-              <span className="rounded-full bg-default px-2 text-[11px] leading-5 text-muted">{sel.staged ? 'Staged' : 'Unstaged'}</span>
+              <span className="rounded-full bg-default px-2 text-[11px] leading-5 text-muted">{primary.staged ? 'Staged' : 'Unstaged'}</span>
+              {selected.length > 1 && <span className="rounded-full bg-default px-2 text-[11px] leading-5 text-muted">{selected.length} selected</span>}
               <span className="ml-auto flex gap-1">
-                {!sel.staged && selFile.status !== 'U' && (
+                {!primary.staged && selFile.status !== 'U' && (
                   <Button size="sm" variant="ghost" className="h-7 gap-1 px-2 text-xs text-danger" onPress={() => discardFile(selFile)}>
                     <Undo2 className="size-3.5" /> Discard file
                   </Button>
                 )}
-                <Button size="sm" variant="secondary" className="h-7 gap-1 px-2 text-xs" onPress={() => toggleFile(selFile, sel.staged)}>
-                  {sel.staged ? <Minus className="size-3.5" /> : selFile.status === 'U' ? <Check className="size-3.5" /> : <Plus className="size-3.5" />}
-                  {sel.staged ? 'Unstage file' : selFile.status === 'U' ? 'Mark resolved' : 'Stage file'}
+                <Button size="sm" variant="secondary" className="h-7 gap-1 px-2 text-xs" onPress={() => toggleFile(selFile, primary.staged)}>
+                  {primary.staged ? <Minus className="size-3.5" /> : selFile.status === 'U' ? <Check className="size-3.5" /> : <Plus className="size-3.5" />}
+                  {primary.staged ? 'Unstage file' : selFile.status === 'U' ? 'Mark resolved' : 'Stage file'}
                 </Button>
               </span>
             </div>
           ) : null}
           <div className="min-h-0 flex-1 overflow-auto">
             {selFile ? (
-              <DiffView diff={diff} mode={selFile.status !== 'U' ? (sel?.staged ? 'staged' : 'unstaged') : undefined} onApply={applyPartial} />
+              <DiffView diff={diff} mode={selFile.status !== 'U' ? (primary?.staged ? 'staged' : 'unstaged') : undefined} onApply={applyPartial} />
             ) : (
               <EmptyHint icon={<FileDiff className="size-8 opacity-40" strokeWidth={1.5} />}>Select a file to review its changes</EmptyHint>
             )}
