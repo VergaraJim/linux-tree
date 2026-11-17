@@ -53,17 +53,14 @@
       "output": "dist",
       "buildResources": "build"
     },
-    "files": [
-      "out/**/*",
-      "package.json"
-    ],
+    "files": ["out/**/*", "package.json", "app-icon.png"],
     "linux": {
       "target": [
         "deb",
         "flatpak"
       ],
       "category": "Development",
-      "icon": "build/icon.png",
+      "icon": "app-icon.png",
       "executableName": "linux-tree",
       "synopsis": "Sourcetree-style Git GUI with git-flow",
       "desktop": {
