@@ -30,6 +30,7 @@ function createWindow(): void {
     minHeight: 600,
     backgroundColor: '#0c0c0f',
     title: 'Linux Tree',
+    icon: join(__dirname, '../../app-icon.png'),
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),

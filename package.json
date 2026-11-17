@@ -53,10 +53,7 @@
       "output": "dist",
       "buildResources": "build"
     },
-    "files": [
-      "out/**/*",
-      "package.json"
-    ],
+    "files": ["out/**/*", "package.json", "app-icon.png"],
     "linux": {
       "target": [
         "deb",
