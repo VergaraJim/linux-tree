@@ -1,6 +1,6 @@
 {
   "name": "linux-tree",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "A Sourcetree-style Git GUI for Linux with built-in git-flow",
   "main": "./out/main/index.js",
   "scripts": {
@@ -64,7 +64,7 @@
         "flatpak"
       ],
       "category": "Development",
-      "icon": "app-icon.png",
+      "icon": "build/icons",
       "executableName": "linux-tree",
       "synopsis": "Sourcetree-style Git GUI with git-flow",
       "desktop": {
