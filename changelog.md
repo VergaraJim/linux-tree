@@ -1,3 +1,7 @@
+# 1.0.4
+
+- Hotfix for icon problem
+
 # 1.0.3
 
 - Rebrand from default colors
