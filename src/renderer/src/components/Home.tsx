@@ -25,12 +25,12 @@ interface Props {
 export function AppLogo({ className = '' }: { className?: string }) {
   return (
     <svg viewBox="0 0 512 512" className={className} aria-hidden>
-      <rect x="16" y="16" width="480" height="480" rx="110" fill="#1e2a3d" />
-      <path d="M176 128 V384" stroke="#4fa3ff" strokeWidth="38" strokeLinecap="round" fill="none" />
-      <path d="M176 330 C176 250 336 270 336 190" stroke="#e5a33a" strokeWidth="38" strokeLinecap="round" fill="none" />
-      <circle cx="176" cy="128" r="44" fill="#4fa3ff" />
-      <circle cx="176" cy="384" r="44" fill="#4fa3ff" />
-      <circle cx="336" cy="170" r="44" fill="#e5a33a" />
+      <rect x="16" y="16" width="480" height="480" rx="110" fill="#13261b" />
+      <path d="M176 128 V384" stroke="#3ecf7f" strokeWidth="38" strokeLinecap="round" fill="none" />
+      <path d="M176 330 C176 250 336 270 336 190" stroke="#ff9f1c" strokeWidth="38" strokeLinecap="round" fill="none" />
+      <circle cx="176" cy="128" r="44" fill="#3ecf7f" />
+      <circle cx="176" cy="384" r="44" fill="#3ecf7f" />
+      <circle cx="336" cy="170" r="44" fill="#ff9f1c" />
     </svg>
   )
 }
