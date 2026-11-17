@@ -11,3 +11,6 @@ if [ -f /etc/apparmor.d/linux-tree ]; then
     fi
     rm -f /etc/apparmor.d/linux-tree
 fi
+if hash gtk-update-icon-cache 2>/dev/null; then
+    gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor || true
+fi
