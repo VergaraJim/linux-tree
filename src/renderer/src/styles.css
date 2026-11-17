@@ -16,6 +16,12 @@
 :root,
 .light,
 [data-theme="light"] {
+  /* Brand palette: green primary, orange secondary. */
+  --accent: #177245;
+  --accent-foreground: var(--snow);
+  /* Brand secondary (orange): used by the logo/graph and future accents. */
+  --brand-secondary: #b45309;
+  --brand-secondary-foreground: var(--snow);
   --diff-add-bg: oklch(0.95 0.05 150);
   --diff-add-bg-strong: oklch(0.88 0.1 150);
   --diff-add-fg: oklch(0.42 0.12 150);
@@ -32,6 +38,12 @@
 
 .dark,
 [data-theme="dark"] {
+  /* Brand palette: green primary, orange secondary. */
+  --accent: #3ecf7f;
+  --accent-foreground: var(--eclipse);
+  /* Brand secondary (orange): used by the logo/graph and future accents. */
+  --brand-secondary: #ff9f1c;
+  --brand-secondary-foreground: var(--eclipse);
   --diff-add-bg: oklch(0.3 0.06 150 / 0.45);
   --diff-add-bg-strong: oklch(0.42 0.1 150 / 0.7);
   --diff-add-fg: oklch(0.82 0.14 150);

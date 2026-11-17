@@ -47,7 +47,7 @@ export function layoutGraph(commits: Commit[]): { rows: GraphRow[]; maxLanes: nu
 
 export const LANE_W = 16
 export const ROW_H = 28
-export const LANE_COLORS = ['#4fa3ff', '#e5a33a', '#57c27a', '#d36ad6', '#e5605a', '#3cc6c6', '#c8c84a', '#9a8cff']
+export const LANE_COLORS = ['#3ecf7f', '#ff9f1c', '#4fa3ff', '#d36ad6', '#e5605a', '#3cc6c6', '#c8c84a', '#9a8cff']
 
 export const laneX = (i: number): number => LANE_W / 2 + i * LANE_W + 4
 export const laneColor = (i: number): string => LANE_COLORS[i % LANE_COLORS.length]
