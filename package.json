@@ -63,7 +63,7 @@
         "flatpak"
       ],
       "category": "Development",
-      "icon": "build/icon.png",
+      "icon": "app-icon.png",
       "executableName": "linux-tree",
       "synopsis": "Sourcetree-style Git GUI with git-flow",
       "desktop": {
