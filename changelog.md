@@ -1,3 +1,7 @@
+# 1.0.3
+
+- Rebrand from default colors
+
 # 1.0.2
 
 - Added flatpak
