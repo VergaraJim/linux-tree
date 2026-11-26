@@ -18,6 +18,17 @@ interface StoredSettings {
 const MAX_RECENT = 30
 const Workspace = memo(RepoWorkspace)
 
+// Ctrl+W, Ctrl+N, Ctrl+1-9 etc. must not fire while the user is typing or while a dialog is open.
+const TEXT_INPUT_TYPES = new Set(['text', 'search', 'password', 'email', 'url', 'number'])
+
+function isTextEntry(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  if (target.isContentEditable) return true
+  if (target instanceof HTMLTextAreaElement) return true
+  if (target instanceof HTMLInputElement) return TEXT_INPUT_TYPES.has(target.type)
+  return false
+}
+
 export default function App() {
   const dialog = useDialog()
   const { theme, setTheme } = useTheme('system')
@@ -167,6 +178,8 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!e.ctrlKey || e.altKey) return
+      if (isTextEntry(e.target)) return
+      if (document.querySelector('[role="dialog"]') !== null) return
       const k = e.key.toLowerCase()
       const cycle = (dir: 1 | -1) => {
         if (!tabs.length) return

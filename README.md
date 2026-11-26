@@ -131,6 +131,8 @@ Git runs without a terminal, so it never hangs on a hidden prompt:
 | Ctrl+= / Ctrl+- / Ctrl+0  | Zoom in / out / reset                           |
 | F12 or Ctrl+Shift+I       | Developer tools                                 |
 
+Tab and repository shortcuts are ignored while typing in a text field or while a dialog is open.
+
 App data (recent repositories, open tabs) lives in `~/.config/Linux Tree/settings.json`.
 
 ## Layout
