@@ -116,7 +116,8 @@ Git runs without a terminal, so it never hangs on a hidden prompt:
 - **Interactive rebase** (right-click a commit): reorder, pick, reword, edit, squash, fixup,
   drop. Continue / Skip / Abort from the status bar when a rebase stops.
 - **Reset** current branch to any commit: soft, mixed, keep or hard.
-- Pull, push (sets upstream automatically), fetch, merge, rebase, stash, tags.
+- Pull (merge, rebase or fast-forward only — the last choice is remembered), push (sets
+  upstream automatically), fetch, merge, rebase, stash, tags.
 
 ## Keyboard shortcuts
 

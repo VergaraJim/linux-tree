@@ -33,7 +33,7 @@ import {
   Workflow
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
-import { Repo } from '../lib/git'
+import { Repo, type PullStrategy } from '../lib/git'
 import { classify, finishFlow, FLOW_DEFAULTS, initFlow, readFlowConfig, startFlow, type FlowConfig, type FlowType } from '../lib/gitflow'
 import { ignoreOptions } from '../lib/ignore'
 import type { Branch, Commit, FileChange, RepoState, Stash } from '../lib/types'
@@ -51,7 +51,32 @@ import { ErrorState, errorMessage, IconButton, notifyError, notifySuccess, Toolb
 const FLOW_LABEL: Record<FlowType, string> = { feature: 'Feature', release: 'Release', hotfix: 'Hotfix' }
 const I = 'size-4'
 const AUTO_REFRESH_MS = 5000
+const PULL_KEY = 'pullStrategy'
+const PULL_OPTIONS = [
+  { value: 'merge', label: 'Merge', description: 'Merge the remote changes into your branch (fast-forwards when possible)' },
+  { value: 'rebase', label: 'Rebase', description: 'Replay your local commits on top of the remote ones. Local changes are stashed and restored' },
+  { value: 'ff-only', label: 'Fast-forward only', description: 'Update only if you have no local commits' }
+]
 let menuId = 1
+
+/** The pull strategy the user picked last time; anything unknown or unreadable means merge. */
+function readPullStrategy(): PullStrategy {
+  try {
+    const v = localStorage.getItem(PULL_KEY)
+    if (v === 'rebase' || v === 'ff-only') return v
+  } catch {
+    // storage can be unavailable (private mode, disabled); fall back to the default
+  }
+  return 'merge'
+}
+
+function storePullStrategy(strategy: PullStrategy) {
+  try {
+    localStorage.setItem(PULL_KEY, strategy)
+  } catch {
+    // not being able to remember the choice must not break pulling
+  }
+}
 
 interface Props {
   path: string
@@ -79,6 +104,7 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
   } | null>(null)
   const [pushDlg, setPushDlg] = useState<number | null>(null)
   const [conflictDlg, setConflictDlg] = useState<{ key: number; initialPath?: string } | null>(null)
+  const [pullStrategy, setPullStrategy] = useState<PullStrategy>(readPullStrategy)
   const busyRef = useRef(false)
   const firstLoad = useRef(true)
   const stateRef = useRef<RepoState | null>(null)
@@ -221,6 +247,31 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
   }
 
   const doPush = () => setPushDlg(Date.now())
+
+  const choosePullStrategy = (strategy: PullStrategy) => {
+    setPullStrategy(strategy)
+    storePullStrategy(strategy)
+  }
+
+  const doPull = async () => {
+    if (!remotes.length) return addRemote('Pulling needs a remote. Add one and Linux Tree will pull from it.', 'pull')
+    const upstream = currentBranch?.upstream
+    const v = await dialog.prompt({
+      title: `Pull into ${head ?? 'HEAD'}`,
+      icon: <ArrowDownToLine className="size-5" />,
+      message: upstream ? (
+        <>
+          From <b>{upstream}</b>
+        </>
+      ) : undefined,
+      fields: [{ name: 'strategy', label: 'How to pull', type: 'radio', value: pullStrategy, options: PULL_OPTIONS }],
+      okLabel: 'Pull'
+    })
+    if (!v) return
+    const strategy: PullStrategy = v.strategy === 'rebase' || v.strategy === 'ff-only' ? v.strategy : 'merge'
+    choosePullStrategy(strategy)
+    run('Pulling…', () => repo.pull(strategy), 'Pull complete')
+  }
 
   const doCommit = (message: string, amend: boolean, push: boolean) =>
     run(push ? 'Committing and pushing…' : 'Committing…', async () => {
@@ -718,7 +769,7 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
     if (!r.fetch) await refresh()
     if (!ok || !then) return
     if (then === 'push') run('Pushing…', () => pushCurrent(r.name), `Pushed ${head} to ${r.name}`)
-    else run('Pulling…', () => repo.pull(), 'Pull complete')
+    else run('Pulling…', () => repo.pull(readPullStrategy()), 'Pull complete')
   }
 
   const removeRemote = async (name: string) => {
@@ -887,11 +938,15 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
         <ToolbarButton
           icon={<ArrowDownToLine className="size-[18px]" />}
           label="Pull"
-          tooltip={!remotes.length ? 'No remote yet — click to add one' : currentBranch?.behind ? `Pull ${currentBranch.behind} new commit(s)` : 'Pull from remote'}
-          badge={currentBranch?.behind}
-          onPress={() =>
-            remotes.length ? run('Pulling…', () => repo.pull(), 'Pull complete') : addRemote('Pulling needs a remote. Add one and Linux Tree will pull from it.', 'pull')
+          tooltip={
+            !remotes.length
+              ? 'No remote yet — click to add one'
+              : currentBranch?.behind
+                ? `Pull ${currentBranch.behind} new commit(s) · ${pullStrategy}`
+                : `Pull from remote · ${pullStrategy}`
           }
+          badge={currentBranch?.behind}
+          onPress={doPull}
         />
         <ToolbarButton
           icon={<ArrowUpFromLine className="size-[18px]" />}

@@ -19,6 +19,8 @@ export class GitError extends Error {
   }
 }
 
+export type PullStrategy = 'merge' | 'rebase' | 'ff-only'
+
 // Normalised diff output regardless of user config (needed for patch building).
 const DIFF_OPTS = ['--no-color', '--no-ext-diff', '--src-prefix=a/', '--dst-prefix=b/']
 
@@ -498,8 +500,14 @@ export class Repo {
     return this.run(['fetch', '--all', '--prune', '--tags'])
   }
 
-  pull() {
-    return this.run(['pull'])
+  pull(strategy: PullStrategy) {
+    const args =
+      strategy === 'rebase'
+        ? ['pull', '--rebase', '--autostash']
+        : strategy === 'ff-only'
+          ? ['pull', '--ff-only']
+          : ['pull', '--no-rebase', '--ff', '--no-edit']
+    return this.run(args)
   }
 
   async push(branch: string, remotes: string[], setUpstream: boolean) {
