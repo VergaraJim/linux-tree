@@ -1,11 +1,11 @@
-import { Button, Label, ListBox, SearchField, Select, Tooltip } from '@heroui/react'
+import { Button, Label, ListBox, SearchField, Select, Spinner, Tooltip } from '@heroui/react'
 import { Copy, GitCommitHorizontal, GitMerge, Tag } from 'lucide-react'
 import { memo, useEffect, useMemo, useRef, useState, type JSX, type MouseEvent } from 'react'
 import type { Repo } from '../lib/git'
 import type { Commit, CommitDetail, FileChange } from '../lib/types'
 import { layoutGraph, laneColor, laneX, LANE_W, ROW_H, type GraphRow } from '../lib/graph'
 import { DiffView, EmptyHint } from './DiffView'
-import { Avatar, formatDate, StatusIcon } from './ui'
+import { Avatar, errorMessage, ErrorState, formatDate, StatusIcon } from './ui'
 
 const PAGE = 400
 
@@ -21,6 +21,9 @@ interface Props {
 export function HistoryView({ repo, reloadKey, remotes, selectRef, onCommitMenu, onError }: Props) {
   const [commits, setCommits] = useState<Commit[]>([])
   const [loaded, setLoaded] = useState(false)
+  const [logLoading, setLogLoading] = useState(true)
+  const [logError, setLogError] = useState<string | null>(null)
+  const [logRetry, setLogRetry] = useState(0)
   const [limit, setLimit] = useState(PAGE)
   const [allBranches, setAllBranches] = useState(true)
   const [search, setSearch] = useState('')
@@ -29,16 +32,27 @@ export function HistoryView({ repo, reloadKey, remotes, selectRef, onCommitMenu,
   const [total, setTotal] = useState(0)
   const [resultQuery, setResultQuery] = useState('')
   const [searchLimit, setSearchLimit] = useState(PAGE)
+  const [searchError, setSearchError] = useState<string | null>(null)
+  const [searchRetry, setSearchRetry] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
   const [detail, setDetail] = useState<CommitDetail | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [detailError, setDetailError] = useState<string | null>(null)
+  const [detailRetry, setDetailRetry] = useState(0)
   const [selFile, setSelFile] = useState<FileChange | null>(null)
   const [diff, setDiff] = useState<string | null>(null)
+  const [diffLoading, setDiffLoading] = useState(false)
+  const [diffError, setDiffError] = useState<string | null>(null)
+  const [diffRetry, setDiffRetry] = useState(0)
   const [scrollTop, setScrollTop] = useState(0)
   const [viewH, setViewH] = useState(600)
   const [bottomH, setBottomH] = useState(340)
   const listRef = useRef<HTMLDivElement>(null)
   const pendingRef = useRef<string | null>(null)
   const lastQuery = useRef('')
+  // Latest commits/results, so async failures know whether there is still something on screen.
+  const commitsRef = useRef<Commit[]>([])
+  const resultsRef = useRef<Commit[]>([])
 
   const commitQuery = (q: string) => {
     if (lastQuery.current === q) return
@@ -52,18 +66,27 @@ export function HistoryView({ repo, reloadKey, remotes, selectRef, onCommitMenu,
   // Load log.
   useEffect(() => {
     let cancelled = false
+    setLogLoading(true)
     repo
       .log(limit, allBranches, remotes)
       .then((c) => {
         if (cancelled) return
         setCommits(c)
         setLoaded(true)
+        setLogError(null)
+        setLogLoading(false)
       })
-      .catch(onError)
+      .catch((e) => {
+        if (cancelled) return
+        setLogLoading(false)
+        // Keep what is already listed; only a log with nothing to show becomes an error panel.
+        if (commitsRef.current.length) onError(e)
+        else setLogError(errorMessage(e))
+      })
     return () => {
       cancelled = true
     }
-  }, [repo, reloadKey, limit, allBranches, remotes.join(',')])
+  }, [repo, reloadKey, limit, allBranches, remotes.join(','), logRetry])
 
   // Debounce the search box; clearing it takes effect immediately.
   useEffect(() => {
@@ -80,6 +103,7 @@ export function HistoryView({ repo, reloadKey, remotes, selectRef, onCommitMenu,
   useEffect(() => {
     if (!query) return
     let cancelled = false
+    setSearchError(null)
     repo
       .searchLog(query, searchLimit, allBranches, remotes)
       .then((r) => {
@@ -91,12 +115,22 @@ export function HistoryView({ repo, reloadKey, remotes, selectRef, onCommitMenu,
       .catch((e) => {
         if (cancelled) return
         setResultQuery(query)
-        onError(e)
+        // Keep existing matches visible; only report in place when there is nothing to show.
+        if (resultsRef.current.length) onError(e)
+        else setSearchError(errorMessage(e))
       })
     return () => {
       cancelled = true
     }
-  }, [repo, reloadKey, query, searchLimit, allBranches, remotes.join(',')])
+  }, [repo, reloadKey, query, searchLimit, allBranches, remotes.join(','), searchRetry])
+
+  useEffect(() => {
+    commitsRef.current = commits
+  }, [commits])
+
+  useEffect(() => {
+    resultsRef.current = results
+  }, [results])
 
   const graph = useMemo(() => layoutGraph(commits), [commits])
   const filtered = query ? results : null
@@ -169,32 +203,56 @@ export function HistoryView({ repo, reloadKey, remotes, selectRef, onCommitMenu,
     setDetail(null)
     setSelFile(null)
     setDiff(null)
-    if (!selected) return
+    setDetailError(null)
+    if (!selected) {
+      setDetailLoading(false)
+      return
+    }
+    setDetailLoading(true)
     let cancelled = false
     repo
       .commitDetail(selected)
       .then((d) => {
         if (cancelled) return
         setDetail(d)
+        setDetailLoading(false)
         if (d.files.length) setSelFile(d.files[0])
       })
-      .catch(onError)
+      .catch((e) => {
+        if (cancelled) return
+        setDetailLoading(false)
+        setDetailError(errorMessage(e))
+      })
     return () => {
       cancelled = true
     }
-  }, [selected, repo])
+  }, [selected, repo, detailRetry])
 
   useEffect(() => {
-    if (!selected || !selFile) return
+    setDiff(null)
+    setDiffError(null)
+    if (!selected || !selFile) {
+      setDiffLoading(false)
+      return
+    }
+    setDiffLoading(true)
     let cancelled = false
     repo
       .commitDiff(selected, selFile)
-      .then((d) => !cancelled && setDiff(d))
-      .catch(onError)
+      .then((d) => {
+        if (cancelled) return
+        setDiff(d)
+        setDiffLoading(false)
+      })
+      .catch((e) => {
+        if (cancelled) return
+        setDiffLoading(false)
+        setDiffError(errorMessage(e))
+      })
     return () => {
       cancelled = true
     }
-  }, [selFile, selected, repo])
+  }, [selFile, selected, repo, diffRetry])
 
   const onScroll = () => {
     const el = listRef.current!
@@ -296,46 +354,58 @@ export function HistoryView({ repo, reloadKey, remotes, selectRef, onCommitMenu,
 
       {/* Commit list */}
       <div className="relative min-h-24 flex-1 overflow-auto outline-none" ref={listRef} onScroll={onScroll} tabIndex={0} onKeyDown={onKeyDown}>
-        <div style={{ height: list.length * ROW_H, position: 'relative' }}>
-          {list.slice(start, end).map((c, k) => {
-            const i = start + k
-            const gi = indexOf.get(c.hash)!
-            const isHead = c.refs.some((r) => r.kind === 'head')
-            return (
-              <div
-                key={c.hash}
-                className={`log-row${isHead ? ' head' : ''}${selected === c.hash ? ' selected' : ''}`}
-                style={{ top: i * ROW_H, height: ROW_H }}
-                onMouseDown={() => setSelected(c.hash)}
-                onContextMenu={(e) => {
-                  setSelected(c.hash)
-                  onCommitMenu(e, c)
-                }}
-              >
-                <div className="flex-none" style={{ width: graphCol }}>
-                  {!filtered && <GraphCell commit={c} row={graph.rows[gi]} width={graphW} />}
-                </div>
-                <div className="flex min-w-0 flex-1 items-center gap-1.5 px-2">
-                  {c.refs.map((r) => (
-                    <span key={r.kind + r.name} className={`ref-pill ref-${r.kind}`}>
-                      {r.kind === 'tag' && <Tag className="size-3" />}
-                      {r.name}
-                    </span>
-                  ))}
-                  <span className={`truncate ${isHead ? 'font-medium' : ''} ${c.parents.length > 1 && !isHead ? 'text-muted' : ''}`}>{c.subject}</span>
-                </div>
-                <div className="w-36 flex-none px-2 text-xs text-muted tabular-nums">{formatDate(c.date)}</div>
-                <div className="flex w-44 flex-none items-center gap-2 px-2" title={c.email}>
-                  <Avatar name={c.author} email={c.email} size={18} />
-                  <span className="truncate text-[13px]">{c.author}</span>
-                </div>
-                <div className="w-20 flex-none px-2 font-mono text-xs text-muted">{c.hash.slice(0, 7)}</div>
-              </div>
-            )
-          })}
-        </div>
-        {loaded && list.length === 0 && (!query || resultQuery === query) && (
-          <EmptyHint icon={<GitCommitHorizontal className="size-8 opacity-40" />}>{query ? 'No matching commits' : 'No commits yet'}</EmptyHint>
+        {logLoading && !list.length ? (
+          <div className="flex h-full min-h-32 items-center justify-center p-6 text-sm text-muted">
+            <Spinner />
+          </div>
+        ) : logError && !list.length ? (
+          <ErrorState title="Couldn’t load history" message={logError} onRetry={() => setLogRetry((n) => n + 1)} />
+        ) : query && searchError && !list.length ? (
+          <ErrorState title="Couldn’t search history" message={searchError} onRetry={() => setSearchRetry((n) => n + 1)} />
+        ) : (
+          <>
+            <div style={{ height: list.length * ROW_H, position: 'relative' }}>
+              {list.slice(start, end).map((c, k) => {
+                const i = start + k
+                const gi = indexOf.get(c.hash)!
+                const isHead = c.refs.some((r) => r.kind === 'head')
+                return (
+                  <div
+                    key={c.hash}
+                    className={`log-row${isHead ? ' head' : ''}${selected === c.hash ? ' selected' : ''}`}
+                    style={{ top: i * ROW_H, height: ROW_H }}
+                    onMouseDown={() => setSelected(c.hash)}
+                    onContextMenu={(e) => {
+                      setSelected(c.hash)
+                      onCommitMenu(e, c)
+                    }}
+                  >
+                    <div className="flex-none" style={{ width: graphCol }}>
+                      {!filtered && <GraphCell commit={c} row={graph.rows[gi]} width={graphW} />}
+                    </div>
+                    <div className="flex min-w-0 flex-1 items-center gap-1.5 px-2">
+                      {c.refs.map((r) => (
+                        <span key={r.kind + r.name} className={`ref-pill ref-${r.kind}`}>
+                          {r.kind === 'tag' && <Tag className="size-3" />}
+                          {r.name}
+                        </span>
+                      ))}
+                      <span className={`truncate ${isHead ? 'font-medium' : ''} ${c.parents.length > 1 && !isHead ? 'text-muted' : ''}`}>{c.subject}</span>
+                    </div>
+                    <div className="w-36 flex-none px-2 text-xs text-muted tabular-nums">{formatDate(c.date)}</div>
+                    <div className="flex w-44 flex-none items-center gap-2 px-2" title={c.email}>
+                      <Avatar name={c.author} email={c.email} size={18} />
+                      <span className="truncate text-[13px]">{c.author}</span>
+                    </div>
+                    <div className="w-20 flex-none px-2 font-mono text-xs text-muted">{c.hash.slice(0, 7)}</div>
+                  </div>
+                )
+              })}
+            </div>
+            {loaded && list.length === 0 && (!query || resultQuery === query) && (
+              <EmptyHint icon={<GitCommitHorizontal className="size-8 opacity-40" />}>{query ? 'No matching commits' : 'No commits yet'}</EmptyHint>
+            )}
+          </>
         )}
       </div>
 
@@ -364,12 +434,27 @@ export function HistoryView({ repo, reloadKey, remotes, selectRef, onCommitMenu,
                 ))}
               </div>
             </div>
+          ) : selected && detailLoading ? (
+            <div className="flex h-full min-h-32 items-center justify-center p-6 text-sm text-muted">
+              <Spinner />
+            </div>
+          ) : selected && detailError ? (
+            <ErrorState title="Couldn’t load this commit" message={detailError} onRetry={() => setDetailRetry((n) => n + 1)} />
           ) : (
             <EmptyHint icon={<GitCommitHorizontal className="size-8 opacity-40" />}>Select a commit to see its details</EmptyHint>
           )}
         </div>
         <div className="min-w-0 flex-1 overflow-auto">
-          <DiffView diff={selFile ? diff : null} placeholder={detail ? 'Select a file' : ' '} />
+          {selFile && diffLoading ? (
+            <div className="flex h-full min-h-32 items-center justify-center gap-3 p-6 text-sm text-muted">
+              <Spinner />
+              Loading diff…
+            </div>
+          ) : selFile && diffError ? (
+            <ErrorState title="Couldn’t load this diff" message={diffError} onRetry={() => setDiffRetry((n) => n + 1)} />
+          ) : (
+            <DiffView diff={selFile ? diff : null} placeholder={detail ? 'Select a file' : ' '} />
+          )}
         </div>
       </div>
     </div>

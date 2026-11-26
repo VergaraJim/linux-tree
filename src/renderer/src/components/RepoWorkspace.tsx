@@ -46,7 +46,7 @@ import { RebaseDialog } from './RebaseDialog'
 import { RemoteDialog, type RemoteDialogResult } from './RemoteDialog'
 import { Sidebar, type View } from './Sidebar'
 import { StatusView } from './StatusView'
-import { IconButton, notifyError, notifySuccess, ToolbarButton } from './ui'
+import { ErrorState, errorMessage, IconButton, notifyError, notifySuccess, ToolbarButton } from './ui'
 
 const FLOW_LABEL: Record<FlowType, string> = { feature: 'Feature', release: 'Release', hotfix: 'Hotfix' }
 const I = 'size-4'
@@ -63,6 +63,7 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
   const dialog = useDialog()
   const repo = useMemo(() => new Repo(path), [path])
   const [state, setState] = useState<RepoState | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [flow, setFlow] = useState<FlowConfig | null>(null)
   const [view, setView] = useState<View>('history')
   const [reloadKey, setReloadKey] = useState(0)
@@ -80,6 +81,7 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
   const [conflictDlg, setConflictDlg] = useState<{ key: number; initialPath?: string } | null>(null)
   const busyRef = useRef(false)
   const firstLoad = useRef(true)
+  const stateRef = useRef<RepoState | null>(null)
 
   // ---------- helpers ----------
 
@@ -99,11 +101,13 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
         repo.tryRun(['for-each-ref', '--format=%(objectname) %(refname)'])
       ])
       if (gen !== loadGen.current) return // a newer load started meanwhile; drop this result
+      setLoadError(null)
       const refsSig = JSON.stringify([refs, s.head, s.headHash])
       const restSig = JSON.stringify([s, f])
       const refsChanged = refsSig !== sigRef.current.refs
       if (!force && !refsChanged && restSig === sigRef.current.rest) return
       sigRef.current = { refs: refsSig, rest: restSig }
+      stateRef.current = s
       setState(s)
       setFlow(f)
       // Commits only change when a ref (or detached HEAD) moves.
@@ -120,8 +124,11 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
   const refresh = useCallback(async () => {
     try {
       await load(true)
+      setLoadError(null)
     } catch (e) {
-      onError(e)
+      setLoadError(errorMessage(e))
+      // Only toast once there is something on screen; the first-load failure is shown in place.
+      if (stateRef.current) onError(e)
     }
   }, [load, onError])
 
@@ -971,11 +978,14 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
               onError={onError}
             />
           )}
-          {!state && (
-            <div className="flex h-full items-center justify-center">
-              <Spinner />
-            </div>
-          )}
+          {!state &&
+            (loadError ? (
+              <ErrorState title="Couldn’t read this repository" message={loadError} onRetry={refresh} />
+            ) : (
+              <div className="flex h-full items-center justify-center">
+                <Spinner />
+              </div>
+            ))}
         </main>
       </div>
 
