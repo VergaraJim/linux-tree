@@ -22,12 +22,20 @@ interface Props {
 
 type Row = { path: string; staged: boolean }
 
+const draftKey = (path: string) => `commitDraft:${path}`
+
 export function StatusView({ repo, status, reloadKey, operation, run, onCommit, onFileMenu, onError }: Props) {
   const dialog = useDialog()
   const [selected, setSelected] = useState<Row[]>([])
   const anchor = useRef<Row | null>(null)
   const [diff, setDiff] = useState<string | null>(null)
-  const [message, setMessage] = useState('')
+  const [message, setMessage] = useState(() => {
+    try {
+      return localStorage.getItem(draftKey(repo.path)) ?? ''
+    } catch {
+      return ''
+    }
+  })
   const [amend, setAmend] = useState(false)
   const [pushAfter, setPushAfter] = useState(() => {
     try {
@@ -87,6 +95,17 @@ export function StatusView({ repo, status, reloadKey, operation, run, onCommit, 
     if (!amend) return
     repo.tryRun(['log', '-1', '--format=%B']).then((m) => m && !message.trim() && setMessage(m.trim()))
   }, [amend])
+
+  // Keep the unfinished message per repository. While amending, the prefill must not overwrite the draft.
+  useEffect(() => {
+    if (amend) return
+    try {
+      if (message.trim()) localStorage.setItem(draftKey(repo.path), message)
+      else localStorage.removeItem(draftKey(repo.path))
+    } catch {
+      /* ignore */
+    }
+  }, [message, amend, repo.path])
 
   const toggleFile = (f: FileChange, staged: boolean) =>
     run(staged ? 'Unstaging…' : 'Staging…', () => (staged ? repo.unstage([f.path]) : repo.stage([f.path])))
@@ -158,6 +177,11 @@ export function StatusView({ repo, status, reloadKey, operation, run, onCommit, 
     if (!canCommit) return
     const ok = await onCommit(message.trim(), amend, pushAfter)
     if (ok) {
+      try {
+        localStorage.removeItem(draftKey(repo.path))
+      } catch {
+        /* ignore */
+      }
       setMessage('')
       setAmend(false)
     }
