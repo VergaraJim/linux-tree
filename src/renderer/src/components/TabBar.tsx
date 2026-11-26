@@ -1,7 +1,11 @@
 import { Button, Tooltip } from '@heroui/react'
-import { FolderGit2, Monitor, Moon, Plus, Sun, X } from 'lucide-react'
-import { useState } from 'react'
+import { Clipboard, FolderGit2, FolderOpen, Monitor, Moon, Plus, Sun, X } from 'lucide-react'
+import { useState, type MouseEvent } from 'react'
+import { ContextMenu, type MenuItem, type MenuState } from './ContextMenu'
 import { AppLogo } from './Home'
+
+const I = 'size-4'
+let menuId = 1
 
 export interface TabInfo {
   path: string
@@ -15,6 +19,8 @@ interface Props {
   active: string | null
   onSelect: (path: string | null) => void
   onClose: (path: string) => void
+  onCloseOthers: (path: string) => void
+  onCloseAll: () => void
   onNew: () => void
   onReorder: (from: number, to: number) => void
   theme: string
@@ -34,9 +40,24 @@ export function tabNames(paths: string[]): Map<string, string> {
   )
 }
 
-export function TabBar({ tabs, active, onSelect, onClose, onNew, onReorder, theme, onCycleTheme }: Props) {
+export function TabBar({ tabs, active, onSelect, onClose, onCloseOthers, onCloseAll, onNew, onReorder, theme, onCycleTheme }: Props) {
   const [dragFrom, setDragFrom] = useState<number | null>(null)
   const [dropAt, setDropAt] = useState<number | null>(null)
+  const [menu, setMenu] = useState<MenuState | null>(null)
+
+  const tabMenu = (e: MouseEvent, t: TabInfo) => {
+    e.preventDefault()
+    const items: MenuItem[] = [
+      { header: t.name },
+      { label: 'Close', action: () => onClose(t.path), icon: <X className={I} /> },
+      { label: 'Close other tabs', action: () => onCloseOthers(t.path), disabled: tabs.length < 2, icon: <X className={I} /> },
+      { label: 'Close all tabs', action: () => onCloseAll(), icon: <X className={I} /> },
+      { separator: true },
+      { label: 'Copy path', action: () => window.api.copy(t.path), icon: <Clipboard className={I} /> },
+      { label: 'Show in file manager', action: () => window.api.openPath(t.path), icon: <FolderOpen className={I} /> }
+    ]
+    setMenu({ x: e.clientX, y: e.clientY, items, id: menuId++ })
+  }
 
   const ThemeIcon = theme === 'light' ? Sun : theme === 'dark' ? Moon : Monitor
 
@@ -71,6 +92,7 @@ export function TabBar({ tabs, active, onSelect, onClose, onNew, onReorder, them
               draggable
               title={`${t.path}${t.head ? `\nBranch: ${t.head}` : ''}${t.changes ? `\n${t.changes} uncommitted change(s)` : ''}`}
               onClick={() => onSelect(t.path)}
+              onContextMenu={(e) => tabMenu(e, t)}
               onAuxClick={(e) => {
                 if (e.button === 1) {
                   e.preventDefault()
@@ -135,6 +157,8 @@ export function TabBar({ tabs, active, onSelect, onClose, onNew, onReorder, them
         </Button>
         <Tooltip.Content>Theme: {theme} (click to change)</Tooltip.Content>
       </Tooltip>
+
+      <ContextMenu menu={menu} onClose={() => setMenu(null)} />
     </div>
   )
 }

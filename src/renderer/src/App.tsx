@@ -160,6 +160,18 @@ export default function App() {
     [tabs, active]
   )
 
+  const closeOtherTabs = useCallback((p: string) => {
+    setTabs([p])
+    setActive(p)
+    setTabInfo((prev) => (prev[p] ? { [p]: prev[p] } : {}))
+  }, [])
+
+  const closeAllTabs = useCallback(() => {
+    setTabs([])
+    setActive(null)
+    setTabInfo({})
+  }, [])
+
   const reorder = useCallback((from: number, to: number) => {
     setTabs((prev) => {
       const next = [...prev]
@@ -246,6 +258,8 @@ export default function App() {
         active={active}
         onSelect={setActive}
         onClose={closeTab}
+        onCloseOthers={closeOtherTabs}
+        onCloseAll={closeAllTabs}
         onNew={() => setActive(null)}
         onReorder={reorder}
         theme={theme}
