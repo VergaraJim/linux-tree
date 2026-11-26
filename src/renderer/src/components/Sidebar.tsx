@@ -51,6 +51,7 @@ interface Props {
   onStashMenu: (e: MouseEvent, s: Stash) => void
   onRemoteMenu: (e: MouseEvent, remote: string) => void
   onAddRemote: () => void
+  onNewTag: () => void
   autoRefresh?: TimerProps
 }
 
@@ -143,7 +144,15 @@ export function Sidebar(p: Props) {
       <Section collapsed={collapsed} toggle={toggle} id="branches" title="Branches" icon={<GitBranch className="size-3.5" />} count={local.length}>
         {renderTree(buildTree(local, 'local'), 0)}
       </Section>
-      <Section collapsed={collapsed} toggle={toggle} id="tags" title="Tags" icon={<Tag className="size-3.5" />} count={s?.tags.length ?? 0}>
+      <Section
+        collapsed={collapsed}
+        toggle={toggle}
+        id="tags"
+        title="Tags"
+        icon={<Tag className="size-3.5" />}
+        count={s?.tags.length ?? 0}
+        action={{ label: 'New tag', icon: <Plus className="size-3.5" />, onPress: p.onNewTag }}
+      >
         {s?.tags.map((t) => (
           <div key={t} className={ROW} style={{ paddingLeft: 26 }} onClick={() => p.onRefSelect(t)} onContextMenu={(e) => p.onTagMenu(e, t)}>
             <Tag className="size-4 flex-none text-muted" />

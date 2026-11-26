@@ -302,6 +302,26 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
     run('Creating branch…', () => repo.createBranch(String(v.name).trim(), start, !!v.checkout))
   }
 
+  const tagDialog = async (ref: string, label: string) => {
+    const fields: Parameters<typeof dialog.prompt>[0]['fields'] = [
+      { name: 'name', label: 'Tag name', type: 'text', placeholder: 'e.g. v1.2.0' },
+      { name: 'msg', label: 'Message (annotated tag)', type: 'text', placeholder: 'optional' }
+    ]
+    if (remotes.length) fields.push({ name: 'push', label: 'Push tag to remote', type: 'checkbox', value: false })
+    const v = await dialog.prompt({
+      title: `Tag ${label}`,
+      icon: <Tag className="size-5" />,
+      fields,
+      okLabel: 'Create tag'
+    })
+    if (!v || !String(v.name).trim()) return
+    const name = String(v.name).trim()
+    run('Tagging…', async () => {
+      await repo.createTag(name, ref, String(v.msg) || undefined)
+      if (v.push && remotes.length) await repo.pushRefs(remote, [`refs/tags/${name}`])
+    })
+  }
+
   const mergeDialog = async (preset?: string) => {
     const options = state!.branches.filter((b) => !b.current).map((b) => ({ value: b.name, label: (b.remote ? '☁ ' : '') + b.name }))
     if (!options.length) return onError('No other branches to merge.')
@@ -511,6 +531,7 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
       items.push({ label: `Check out`, action: () => checkoutBranch(b), icon: <ArrowRightLeft className={I} /> })
       items.push({ label: `Merge into ${head ?? 'HEAD'}`, action: () => mergeDialog(b.name), icon: <GitMerge className={I} /> })
       items.push({ label: `New branch from here…`, action: () => newBranch(b.name, b.name), icon: <GitBranchPlus className={I} /> })
+      items.push({ label: `New tag here…`, action: () => tagDialog(b.name, b.name), icon: <Tag className={I} /> })
       items.push({ separator: true })
       items.push({ label: `Delete from remote…`, action: () => deleteBranch(b), danger: true, icon: <Trash2 className={I} /> })
     } else {
@@ -536,6 +557,7 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
       })
       items.push({ separator: true })
       items.push({ label: `New branch from here…`, action: () => newBranch(b.name, b.name), icon: <GitBranchPlus className={I} /> })
+      items.push({ label: `New tag here…`, action: () => tagDialog(b.name, b.name), icon: <Tag className={I} /> })
       items.push({
         label: 'Rename…',
         icon: <Pencil className={I} />,
@@ -587,28 +609,7 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
         }
       },
       { label: 'New branch here…', action: () => newBranch(c.hash, short), icon: <GitBranchPlus className={I} /> },
-      {
-        label: 'New tag here…',
-        icon: <Tag className={I} />,
-        action: async () => {
-          const v = await dialog.prompt({
-            title: `Tag ${short}`,
-            icon: <Tag className="size-5" />,
-            fields: [
-              { name: 'name', label: 'Tag name', type: 'text', placeholder: 'e.g. v1.2.0' },
-              { name: 'msg', label: 'Message (annotated tag)', type: 'text', placeholder: 'optional' },
-              { name: 'push', label: 'Push tag to remote', type: 'checkbox', value: false }
-            ],
-            okLabel: 'Create tag'
-          })
-          if (!v || !String(v.name).trim()) return
-          const name = String(v.name).trim()
-          run('Tagging…', async () => {
-            await repo.createTag(name, c.hash, String(v.msg) || undefined)
-            if (v.push && remotes.length) await repo.pushRefs(remote, [`refs/tags/${name}`])
-          })
-        }
-      },
+      { label: 'New tag here…', action: () => tagDialog(c.hash, short), icon: <Tag className={I} /> },
       { separator: true },
       {
         label: `Interactive rebase after ${short}…`,
@@ -1015,6 +1016,10 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
           onStashMenu={stashMenu}
           onRemoteMenu={remoteMenu}
           onAddRemote={() => addRemote()}
+          onNewTag={() => {
+            if (!state?.headHash) return onError('Create a commit before tagging.')
+            tagDialog('HEAD', head ?? state.headHash.slice(0, 7))
+          }}
           autoRefresh={{ ms: AUTO_REFRESH_MS, paused: !active || !!busy, resetKey: reloadKey, onTick: poll }}
         />
         <main className="min-w-0 flex-1 overflow-hidden rounded-xl border border-separator bg-surface shadow-surface">
