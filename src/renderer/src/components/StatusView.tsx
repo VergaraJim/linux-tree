@@ -16,7 +16,7 @@ interface Props {
   operation: string | null
   run: (label: string, fn: () => Promise<unknown>) => Promise<boolean>
   onCommit: (message: string, amend: boolean, push: boolean) => Promise<boolean>
-  onFileMenu: (e: MouseEvent, f: FileChange, staged: boolean) => void
+  onFileMenu: (e: MouseEvent, files: FileChange[], staged: boolean) => void
   onError: (e: unknown) => void
 }
 
@@ -199,9 +199,14 @@ export function StatusView({ repo, status, reloadKey, operation, run, onCommit, 
           onClick={(e) => selectRow(e, f, staged, files)}
           onDoubleClick={() => toggleFile(f, staged)}
           onContextMenu={(e) => {
-            setSelected([{ path: f.path, staged }])
-            anchor.current = { path: f.path, staged }
-            onFileMenu(e, f, staged)
+            const row: Row = { path: f.path, staged }
+            if (selected.some((s) => s.path === f.path && s.staged === staged)) {
+              onFileMenu(e, files.filter((x) => selected.some((s) => s.path === x.path && s.staged === staged)), staged)
+            } else {
+              setSelected([row])
+              anchor.current = row
+              onFileMenu(e, [f], staged)
+            }
           }}
           title={f.oldPath ? `${f.oldPath} → ${f.path}` : f.path}
         >

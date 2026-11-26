@@ -746,31 +746,89 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
     ])
   }
 
-  const fileMenu = (e: MouseEvent, f: FileChange, staged: boolean) => {
+  const fileMenu = (e: MouseEvent, files: FileChange[], staged: boolean) => {
+    const n = files.length
+    if (!n) return
+    const paths = files.map((f) => f.path)
     const items: MenuItem[] = []
-    if (f.status === 'U') {
+    if (n > 1) items.push({ header: `${n} files selected` })
+
+    const allConflicted = files.every((f) => f.status === 'U')
+    const someConflicted = files.some((f) => f.status === 'U')
+    const someNew = files.some((f) => f.status === '?')
+    if (allConflicted) {
       items.push({
         label: 'Resolve conflicts…',
         icon: <GitMerge className={I} />,
-        action: () => setConflictDlg({ key: Date.now(), initialPath: f.path })
+        action: () => setConflictDlg({ key: Date.now(), initialPath: files[0].path })
       })
-    } else if (staged) {
-      items.push({ label: 'Unstage', action: () => run('Unstaging…', () => repo.unstage([f.path])), icon: <Minus className={I} /> })
-    } else {
-      items.push({ label: 'Stage', action: () => run('Staging…', () => repo.stage([f.path])), icon: <Plus className={I} /> })
-      items.push({
-        label: f.status === '?' ? 'Delete file…' : 'Discard changes…',
-        danger: true,
-        icon: f.status === '?' ? <Trash2 className={I} /> : <Undo2 className={I} />,
-        action: async () => {
-          if (await dialog.confirm('Discard changes', <>Discard all changes to <b>{f.path}</b>? This cannot be undone.</>, 'Discard', true))
-            run('Discarding…', () => repo.discard([f]))
+    } else if (!someConflicted) {
+      if (staged) {
+        items.push({
+          label: n === 1 ? 'Unstage' : `Unstage ${n} files`,
+          action: () => run('Unstaging…', () => repo.unstage(paths)),
+          icon: <Minus className={I} />
+        })
+      } else {
+        items.push({
+          label: n === 1 ? 'Stage' : `Stage ${n} files`,
+          action: () => run('Staging…', () => repo.stage(paths)),
+          icon: <Plus className={I} />
+        })
+        if (!someNew) {
+          items.push({
+            label: n === 1 ? 'Discard changes…' : `Discard changes to ${n} files…`,
+            danger: true,
+            icon: <Undo2 className={I} />,
+            action: async () => {
+              if (
+                await dialog.confirm(
+                  'Discard changes',
+                  n === 1 ? (
+                    <>Discard all changes to <b>{paths[0]}</b>? This cannot be undone.</>
+                  ) : (
+                    <>Discard changes to <b>{n}</b> files? This cannot be undone.</>
+                  ),
+                  'Discard',
+                  true
+                )
+              )
+                run('Discarding…', () => repo.discard(files))
+            }
+          })
+        } else if (files.every((f) => f.status === '?')) {
+          items.push({
+            label: n === 1 ? 'Delete file…' : `Delete ${n} files…`,
+            danger: true,
+            icon: <Trash2 className={I} />,
+            action: async () => {
+              if (
+                await dialog.confirm(
+                  n === 1 ? 'Delete file' : 'Delete files',
+                  n === 1 ? (
+                    <>Delete new file <b>{paths[0]}</b>? This cannot be undone.</>
+                  ) : (
+                    <>Delete <b>{n}</b> new files? This cannot be undone.</>
+                  ),
+                  'Delete',
+                  true
+                )
+              )
+                run('Deleting…', () => repo.discard(files))
+            }
+          })
         }
-      })
+      }
     }
+
     items.push({ separator: true })
-    items.push({ label: 'Open file', action: () => window.api.openPath(`${repo.path}/${f.path}`), icon: <ExternalLink className={I} /> })
-    items.push({ label: 'Copy path', action: () => window.api.copy(f.path), icon: <Clipboard className={I} /> })
+    if (n === 1)
+      items.push({ label: 'Open file', action: () => window.api.openPath(`${repo.path}/${paths[0]}`), icon: <ExternalLink className={I} /> })
+    items.push({
+      label: n === 1 ? 'Copy path' : `Copy ${n} paths`,
+      action: () => window.api.copy(paths.join('\n')),
+      icon: <Clipboard className={I} />
+    })
     openMenu(e, items)
   }
 
