@@ -8,6 +8,9 @@ import { DiffView, EmptyHint } from './DiffView'
 import { Avatar, errorMessage, ErrorState, formatDate, StatusIcon } from './ui'
 
 const PAGE = 400
+// Filters, column headers, the minimum list and the splitter.
+const DETAILS_RESERVED = 180
+const DETAILS_MIN = 120
 
 interface Props {
   repo: Repo
@@ -47,6 +50,9 @@ export function HistoryView({ repo, reloadKey, remotes, selectRef, onCommitMenu,
   const [scrollTop, setScrollTop] = useState(0)
   const [viewH, setViewH] = useState(600)
   const [bottomH, setBottomH] = useState(340)
+  const [rootH, setRootH] = useState(600)
+  const [rootW, setRootW] = useState(900)
+  const rootRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const pendingRef = useRef<string | null>(null)
   const lastQuery = useRef('')
@@ -142,6 +148,18 @@ export function HistoryView({ repo, reloadKey, remotes, selectRef, onCommitMenu,
     const el = listRef.current
     if (!el) return
     const ro = new ResizeObserver(() => setViewH(el.clientHeight))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  // Track the root size so the details pane never outgrows the space available.
+  useEffect(() => {
+    const el = rootRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => {
+      setRootH(el.clientHeight)
+      setRootW(el.clientWidth)
+    })
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
@@ -281,12 +299,16 @@ export function HistoryView({ repo, reloadKey, remotes, selectRef, onCommitMenu,
   const end = Math.min(list.length, Math.ceil((scrollTop + viewH) / ROW_H) + 10)
   const indexOf = useMemo(() => new Map(commits.map((c, i) => [c.hash, i])), [commits])
 
+  const maxDetailsH = Math.max(DETAILS_MIN, rootH - DETAILS_RESERVED)
+  // `bottomH` stays the user's preference; the rendered height is capped to the space available.
+  const detailsH = Math.max(DETAILS_MIN, Math.min(bottomH, maxDetailsH))
+
   const startDrag = (e: React.MouseEvent) => {
     e.preventDefault()
     const y0 = e.clientY
-    const h0 = bottomH
+    const h0 = detailsH
     const move = (ev: globalThis.MouseEvent) =>
-      setBottomH(Math.max(140, Math.min(window.innerHeight - 260, h0 - (ev.clientY - y0))))
+      setBottomH(Math.max(DETAILS_MIN, Math.min(maxDetailsH, h0 - (ev.clientY - y0))))
     const up = () => {
       window.removeEventListener('mousemove', move)
       window.removeEventListener('mouseup', up)
@@ -295,10 +317,11 @@ export function HistoryView({ repo, reloadKey, remotes, selectRef, onCommitMenu,
     window.addEventListener('mouseup', up)
   }
 
-  const graphCol = Math.max(graphW, 56)
+  // The graph may take at most a quarter of the view width.
+  const graphCol = Math.max(56, Math.min(graphW, Math.floor(rootW / 4)))
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="@container flex h-full min-h-0 flex-col" ref={rootRef}>
       {/* Filters */}
       <div className="flex flex-none items-center gap-2 border-b border-separator px-3 py-2">
         <Select
@@ -346,10 +369,12 @@ export function HistoryView({ repo, reloadKey, remotes, selectRef, onCommitMenu,
         <div className="pl-3" style={{ width: graphCol }}>
           Graph
         </div>
-        <div className="min-w-0 flex-1 px-2">Description</div>
-        <div className="w-36 flex-none px-2">Date</div>
-        <div className="w-44 flex-none px-2">Author</div>
-        <div className="w-20 flex-none px-2">Commit</div>
+        <div className="min-w-40 flex-1 px-2">Description</div>
+        <div className="w-36 flex-none px-2 @max-3xl:w-32">Date</div>
+        <div className="w-44 flex-none px-2 @max-3xl:w-9 @max-3xl:px-1">
+          <span className="@max-3xl:hidden">Author</span>
+        </div>
+        <div className="w-20 flex-none px-2 @max-2xl:hidden">Commit</div>
       </div>
 
       {/* Commit list */}
@@ -381,9 +406,9 @@ export function HistoryView({ repo, reloadKey, remotes, selectRef, onCommitMenu,
                     }}
                   >
                     <div className="flex-none" style={{ width: graphCol }}>
-                      {!filtered && <GraphCell commit={c} row={graph.rows[gi]} width={graphW} />}
+                      {!filtered && <GraphCell commit={c} row={graph.rows[gi]} width={graphCol} />}
                     </div>
-                    <div className="flex min-w-0 flex-1 items-center gap-1.5 px-2">
+                    <div className="flex min-w-40 flex-1 items-center gap-1.5 px-2">
                       {c.refs.map((r) => (
                         <span key={r.kind + r.name} className={`ref-pill ref-${r.kind}`}>
                           {r.kind === 'tag' && <Tag className="size-3" />}
@@ -392,12 +417,12 @@ export function HistoryView({ repo, reloadKey, remotes, selectRef, onCommitMenu,
                       ))}
                       <span className={`truncate ${isHead ? 'font-medium' : ''} ${c.parents.length > 1 && !isHead ? 'text-muted' : ''}`}>{c.subject}</span>
                     </div>
-                    <div className="w-36 flex-none px-2 text-xs text-muted tabular-nums">{formatDate(c.date)}</div>
-                    <div className="flex w-44 flex-none items-center gap-2 px-2" title={c.email}>
+                    <div className="w-36 flex-none px-2 text-xs text-muted tabular-nums @max-3xl:w-32">{formatDate(c.date)}</div>
+                    <div className="flex w-44 flex-none items-center gap-2 px-2 @max-3xl:w-9 @max-3xl:gap-0 @max-3xl:px-1" title={`${c.author} <${c.email}>`}>
                       <Avatar name={c.author} email={c.email} size={18} />
-                      <span className="truncate text-[13px]">{c.author}</span>
+                      <span className="truncate text-[13px] @max-3xl:hidden">{c.author}</span>
                     </div>
-                    <div className="w-20 flex-none px-2 font-mono text-xs text-muted">{c.hash.slice(0, 7)}</div>
+                    <div className="w-20 flex-none px-2 font-mono text-xs text-muted @max-2xl:hidden">{c.hash.slice(0, 7)}</div>
                   </div>
                 )
               })}
@@ -412,7 +437,7 @@ export function HistoryView({ repo, reloadKey, remotes, selectRef, onCommitMenu,
       <div className="splitter-h" onMouseDown={startDrag} />
 
       {/* Commit details */}
-      <div className="flex min-h-0 flex-none" style={{ height: bottomH }}>
+      <div className="flex min-h-0 flex-none" style={{ height: detailsH }}>
         <div className="flex w-[38%] min-w-72 flex-col overflow-hidden border-r border-separator">
           {detail ? (
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">

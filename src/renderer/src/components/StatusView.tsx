@@ -269,10 +269,10 @@ export function StatusView({ repo, status, reloadKey, operation, run, onCommit, 
     action: React.ReactNode
   }) => (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-9 flex-none items-center gap-2 px-3">
+      <div className="flex min-h-9 flex-none flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1">
         <span className="text-[11px] font-semibold tracking-wide text-muted uppercase">{title}</span>
         <span className="rounded-full bg-default px-1.5 text-[11px] leading-[18px] font-semibold text-muted tabular-nums">{count}</span>
-        <span className="ml-auto">{action}</span>
+        <span className="ml-auto flex flex-wrap items-center justify-end gap-1">{action}</span>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
         {files.length ? (
@@ -307,7 +307,7 @@ export function StatusView({ repo, status, reloadKey, operation, run, onCommit, 
             action: (
               <>
                 {stagedSel.length > 0 && (
-                  <Button size="sm" variant="secondary" className="mr-1 h-6 px-2 text-xs" onPress={unstageSelected}>
+                  <Button size="sm" variant="secondary" className="h-6 px-2 text-xs" onPress={unstageSelected}>
                     <Minus className="size-3.5" /> Unstage {stagedSel.length}
                   </Button>
                 )}
@@ -338,7 +338,7 @@ export function StatusView({ repo, status, reloadKey, operation, run, onCommit, 
                       {unstagedSel.length === 1 ? 'Stage 1 file' : `Stage ${unstagedSel.length} files`}
                     </Button>
                     <span
-                      className="ml-1 inline-block align-middle"
+                      className="inline-flex"
                       title={canDiscard ? undefined : 'Only files with modifications can be discarded — new and conflicted files are not allowed'}
                     >
                       <Button size="sm" variant="danger-soft" className="h-6 px-2 text-xs" isDisabled={!canDiscard} onPress={discardSelected}>
@@ -346,7 +346,7 @@ export function StatusView({ repo, status, reloadKey, operation, run, onCommit, 
                       </Button>
                     </span>
                     <span
-                      className="ml-1 inline-block align-middle"
+                      className="inline-flex"
                       title={canDelete ? undefined : 'Only new (untracked, status “?”) files can be deleted'}
                     >
                       <Button size="sm" variant="danger-soft" className="h-6 px-2 text-xs" isDisabled={!canDelete} onPress={deleteSelected}>
@@ -428,7 +428,7 @@ export function StatusView({ repo, status, reloadKey, operation, run, onCommit, 
             </span>
           )}
         </div>
-        <div className="mt-2.5 flex items-center gap-5">
+        <div className="mt-2.5 flex flex-wrap items-center gap-x-5 gap-y-2">
           <Checkbox variant="secondary" className="group" isSelected={amend} onChange={(v: boolean) => setAmend(v)}>
             <Checkbox.Content>
               <Checkbox.Control className="border border-border-tertiary group-data-[selected=true]:border-transparent">
