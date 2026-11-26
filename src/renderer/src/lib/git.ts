@@ -302,6 +302,21 @@ export class Repo {
     return out.trim() === ''
   }
 
+  /** Append gitignore patterns to the repository, local (info/exclude) or global ignore file. */
+  async addIgnore(patterns: string[], target: 'repo' | 'local' | 'global'): Promise<void> {
+    let file: string
+    if (target === 'repo') {
+      file = '.gitignore'
+    } else if (target === 'local') {
+      file = (await this.run(['rev-parse', '--git-path', 'info/exclude'])).trim()
+    } else {
+      const configured = (await this.tryRun(['config', '--path', '--get', 'core.excludesFile']))?.trim()
+      file = configured || `${await window.api.home()}/.config/git/ignore`
+    }
+    const err = await window.api.appendLines(this.path, file, patterns)
+    if (err) throw new Error(err)
+  }
+
   // ---------- writing ----------
 
   stage(paths: string[]) {

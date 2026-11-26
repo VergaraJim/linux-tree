@@ -1,4 +1,4 @@
-import { Button, Checkbox, Input, Label, ListBox, Modal, Select, TextArea, TextField } from '@heroui/react'
+import { Button, Checkbox, Input, Label, ListBox, Modal, Radio, RadioGroup, Select, TextArea, TextField } from '@heroui/react'
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react'
 
 export type Field =
@@ -6,6 +6,13 @@ export type Field =
   | { name: string; label: string; type: 'textarea'; value?: string; placeholder?: string }
   | { name: string; label: string; type: 'checkbox'; value?: boolean }
   | { name: string; label: string; type: 'select'; value?: string; options: { value: string; label: string }[] }
+  | {
+      name: string
+      label: string
+      type: 'radio'
+      value?: string
+      options: { value: string; label: string; description?: string }[]
+    }
 
 export interface DialogSpec {
   title: string
@@ -86,7 +93,7 @@ function initialValues(spec: DialogSpec): Values {
   const v: Values = {}
   for (const f of spec.fields ?? []) {
     if (f.type === 'checkbox') v[f.name] = !!f.value
-    else if (f.type === 'select') v[f.name] = f.value ?? f.options[0]?.value ?? ''
+    else if (f.type === 'select' || f.type === 'radio') v[f.name] = f.value ?? f.options[0]?.value ?? ''
     else v[f.name] = f.value ?? ''
   }
   return v
@@ -142,6 +149,35 @@ function DialogBox({ spec, isOpen, onFinish }: { spec: DialogSpec; isOpen: boole
                           {f.label}
                         </Checkbox.Content>
                       </Checkbox>
+                    )
+                  }
+                  if (f.type === 'radio') {
+                    return (
+                      <RadioGroup
+                        key={f.name}
+                        className="w-full"
+                        value={values[f.name] as string}
+                        onChange={(v: string) => set(f.name, v)}
+                      >
+                        <Label>{f.label}</Label>
+                        <div className="mt-2 flex max-h-72 flex-col gap-3 overflow-y-auto">
+                          {f.options.map((o) => (
+                            <Radio key={o.value} value={o.value}>
+                              <Radio.Content>
+                                <Radio.Control>
+                                  <Radio.Indicator />
+                                </Radio.Control>
+                                <div className="flex min-w-0 flex-col gap-0.5">
+                                  <span>{o.label}</span>
+                                  {o.description && (
+                                    <span className="text-xs break-all whitespace-pre-wrap text-muted">{o.description}</span>
+                                  )}
+                                </div>
+                              </Radio.Content>
+                            </Radio>
+                          ))}
+                        </div>
+                      </RadioGroup>
                     )
                   }
                   if (f.type === 'select') {
