@@ -110,7 +110,9 @@ Git runs without a terminal, so it never hangs on a hidden prompt:
   resolve, commit, and run Finish again — it picks up where it left off.
 - **File status**: stage/unstage/discard whole files, **hunks or individual lines**
   (click lines, Shift+click for a range), conflict helpers (ours/theirs/mark resolved),
-  commit with amend and push-after.
+  commit with amend and push-after. Right-click new files → **Ignore…** (this file, its
+  extension, a parent folder or a custom pattern; saved to .gitignore, .git/info/exclude
+  or the global ignore file).
 - **Interactive rebase** (right-click a commit): reorder, pick, reword, edit, squash, fixup,
   drop. Continue / Skip / Abort from the status bar when a rebase stops.
 - **Reset** current branch to any commit: soft, mixed, keep or hard.

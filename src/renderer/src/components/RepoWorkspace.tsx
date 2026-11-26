@@ -11,6 +11,7 @@ import {
   CloudCog,
   Copy,
   ExternalLink,
+  EyeOff,
   Flag,
   FolderOpen,
   GitBranch,
@@ -34,6 +35,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { Repo } from '../lib/git'
 import { classify, finishFlow, FLOW_DEFAULTS, initFlow, readFlowConfig, startFlow, type FlowConfig, type FlowType } from '../lib/gitflow'
+import { ignoreOptions } from '../lib/ignore'
 import type { Branch, Commit, FileChange, RepoState, Stash } from '../lib/types'
 import { ConflictResolver } from './ConflictResolver'
 import { ContextMenu, MenuBody, type MenuItem, type MenuState } from './ContextMenu'
@@ -746,6 +748,41 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
     ])
   }
 
+  const ignoreDialog = async (files: FileChange[]) => {
+    const n = files.length
+    const v = await dialog.prompt({
+      title: n === 1 ? 'Ignore file' : `Ignore ${n} files`,
+      icon: <EyeOff className="size-5" />,
+      size: 'md',
+      fields: [
+        { name: 'pattern', label: 'What to ignore', type: 'radio', options: ignoreOptions(files.map((f) => f.path)) },
+        {
+          name: 'custom',
+          label: 'Custom pattern (optional, replaces the choice above)',
+          type: 'text',
+          placeholder: 'e.g. build/**/*.map'
+        },
+        {
+          name: 'target',
+          label: 'Save rule in',
+          type: 'select',
+          value: 'repo',
+          options: [
+            { value: 'repo', label: '.gitignore (shared with the repository)' },
+            { value: 'local', label: '.git/info/exclude (only this computer)' },
+            { value: 'global', label: 'Global ignore file (all repositories)' }
+          ]
+        }
+      ],
+      okLabel: 'Ignore'
+    })
+    if (!v) return
+    const custom = String(v.custom ?? '').trim()
+    const lines = custom ? [custom] : String(v.pattern).split('\n').filter(Boolean)
+    if (!lines.length) return
+    run('Ignoring…', () => repo.addIgnore(lines, v.target as 'repo' | 'local' | 'global'), 'Ignore rule added')
+  }
+
   const fileMenu = (e: MouseEvent, files: FileChange[], staged: boolean) => {
     const n = files.length
     if (!n) return
@@ -797,6 +834,7 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
             }
           })
         } else if (files.every((f) => f.status === '?')) {
+          items.push({ label: 'Ignore…', icon: <EyeOff className={I} />, action: () => ignoreDialog(files) })
           items.push({
             label: n === 1 ? 'Delete file…' : `Delete ${n} files…`,
             danger: true,
