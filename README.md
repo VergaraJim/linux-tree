@@ -103,7 +103,8 @@ Git runs without a terminal, so it never hangs on a hidden prompt:
 - **Commit graph** across all branches (or current only), ref labels, search, infinite scroll,
   commit details + diffs. Right-click: checkout, branch/tag here, cherry-pick, revert, reset.
 - **Branch folders**: `feature/x` shown as a collapsible tree, ↑ahead / ↓behind counts,
-  double-click to check out (remote branches create a tracking branch).
+  double-click to check out (remote branches create a tracking branch). A filter box for
+  branches and tags above the list narrows them down; Enter checks out the first match.
 - **Git-flow**: init / start / finish feature, release, hotfix. Uses Sourcetree-compatible
   `gitflow.*` config keys. Finish merges with `--no-ff`, tags releases/hotfixes, back-merges
   the tag into develop, deletes the branch (local + remote) and can push. If a merge conflicts,

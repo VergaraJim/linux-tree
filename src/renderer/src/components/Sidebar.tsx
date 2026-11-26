@@ -1,3 +1,4 @@
+import { SearchField } from '@heroui/react'
 import { Archive, ChevronRight, Cloud, FileDiff, Folder, GitBranch, History, Plus, Tag } from 'lucide-react'
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import type { Branch, RepoState, Stash } from '../lib/types'
@@ -60,6 +61,7 @@ const ROW = 'list-row h-7 pr-2 text-[13px]'
 export function Sidebar(p: Props) {
   const storageKey = `collapsed:${p.repoPath}`
   const [collapsed, setCollapsed] = useState<Set<string>>(() => loadCollapsed(storageKey))
+  const [filter, setFilter] = useState('')
 
   const toggle = (key: string) => {
     setCollapsed((prev) => {
@@ -87,9 +89,49 @@ export function Sidebar(p: Props) {
     if (owner) byRemote.get(owner)!.push(b)
   }
 
+  // Filtering replaces the folder trees with flat lists of matching refs.
+  const q = filter.trim().toLowerCase()
+  const filtering = q.length > 0
+  const matches = (name: string) => name.toLowerCase().includes(q)
+  const byName = (a: Branch, b: Branch) => a.name.localeCompare(b.name)
+  const matchedLocal = filtering ? local.filter((b) => matches(b.name)).sort(byName) : []
+  const matchedRemotes = filtering
+    ? remoteNames
+        .map((r) => ({ remote: r, branches: (byRemote.get(r) ?? []).filter((b) => matches(b.name)).sort(byName) }))
+        .filter((x) => x.branches.length > 0)
+    : []
+  const matchedRemoteCount = matchedRemotes.reduce((n, x) => n + x.branches.length, 0)
+  const matchedTags = filtering ? (s?.tags ?? []).filter(matches).sort((a, b) => a.localeCompare(b)) : []
+  // Enter checks out the first matching local branch, else the first matching remote branch.
+  const target: Branch | undefined = matchedLocal[0] ?? matchedRemotes[0]?.branches[0]
+
+  const branchRow = (b: Branch, label: string, depth: number, highlighted: boolean): ReactNode => (
+    <div
+      key={b.name}
+      className={`${ROW} ${b.current ? 'font-semibold' : ''} ${highlighted ? 'selected' : ''}`}
+      style={{ paddingLeft: 26 + depth * 14 }}
+      title={b.name + (b.upstream ? ` → ${b.upstream}` : '')}
+      onClick={() => p.onRefSelect(b.name)}
+      onDoubleClick={() => p.onBranchOpen(b)}
+      onContextMenu={(e) => p.onBranchMenu(e, b)}
+    >
+      {b.current ? (
+        <span className="flex size-4 flex-none items-center justify-center">
+          <span className="size-2 rounded-full bg-accent ring-4 ring-accent/20" />
+        </span>
+      ) : (
+        <GitBranch className="size-4 flex-none text-muted" />
+      )}
+      <span className="truncate">{label}</span>
+      <TrackBadges b={b} />
+    </div>
+  )
+
+  const highlighted = (b: Branch) => target !== undefined && b.name === target.name
+
   const renderTree = (node: TreeNode, depth: number): ReactNode => {
     const folders = [...node.folders.values()].sort((a, b) => a.name.localeCompare(b.name))
-    const leaves = [...node.leaves].sort((a, b) => a.name.localeCompare(b.name))
+    const leaves = [...node.leaves].sort(byName)
     return (
       <>
         {folders.map((f) => {
@@ -109,30 +151,12 @@ export function Sidebar(p: Props) {
             </div>
           )
         })}
-        {leaves.map((b) => (
-          <div
-            key={b.name}
-            className={`${ROW} ${b.current ? 'font-semibold' : ''}`}
-            style={{ paddingLeft: 26 + depth * 14 }}
-            title={b.name + (b.upstream ? ` → ${b.upstream}` : '')}
-            onClick={() => p.onRefSelect(b.name)}
-            onDoubleClick={() => p.onBranchOpen(b)}
-            onContextMenu={(e) => p.onBranchMenu(e, b)}
-          >
-            {b.current ? (
-              <span className="flex size-4 flex-none items-center justify-center">
-                <span className="size-2 rounded-full bg-accent ring-4 ring-accent/20" />
-              </span>
-            ) : (
-              <GitBranch className="size-4 flex-none text-muted" />
-            )}
-            <span className="truncate">{b.name.split('/').pop()}</span>
-            <TrackBadges b={b} />
-          </div>
-        ))}
+        {leaves.map((b) => branchRow(b, b.name.split('/').pop()!, depth, highlighted(b)))}
       </>
     )
   }
+
+  const noMatches = <div className="truncate py-1 pr-2 text-xs text-muted" style={{ paddingLeft: 26 }}>No matches</div>
 
   return (
     <aside className="flex w-64 flex-none flex-col overflow-y-auto px-2 pt-1 pb-6">
@@ -141,8 +165,31 @@ export function Sidebar(p: Props) {
         <NavItem current={p.view} onView={p.onView} v="history" icon={<History className="size-4" />} label="History" />
       </div>
       {p.autoRefresh && <RefreshTimer {...p.autoRefresh} />}
-      <Section collapsed={collapsed} toggle={toggle} id="branches" title="Branches" icon={<GitBranch className="size-3.5" />} count={local.length}>
-        {renderTree(buildTree(local, 'local'), 0)}
+      <SearchField
+        aria-label="Filter branches and tags"
+        variant="secondary"
+        value={filter}
+        onChange={setFilter}
+        onSubmit={() => target && p.onBranchOpen(target)}
+        className="mt-2"
+      >
+        <SearchField.Group className="h-8 min-h-8">
+          <SearchField.SearchIcon />
+          <SearchField.Input placeholder="Filter branches and tags…" spellCheck={false} />
+          <SearchField.ClearButton />
+        </SearchField.Group>
+      </SearchField>
+      <Section
+        collapsed={collapsed}
+        toggle={toggle}
+        id="branches"
+        title="Branches"
+        icon={<GitBranch className="size-3.5" />}
+        count={filtering ? matchedLocal.length : local.length}
+        forceOpen={filtering}
+      >
+        {filtering ? matchedLocal.map((b) => branchRow(b, b.name, 0, highlighted(b))) : renderTree(buildTree(local, 'local'), 0)}
+        {filtering && !matchedLocal.length && noMatches}
       </Section>
       <Section
         collapsed={collapsed}
@@ -150,15 +197,24 @@ export function Sidebar(p: Props) {
         id="tags"
         title="Tags"
         icon={<Tag className="size-3.5" />}
-        count={s?.tags.length ?? 0}
+        count={filtering ? matchedTags.length : (s?.tags.length ?? 0)}
+        forceOpen={filtering}
         action={{ label: 'New tag', icon: <Plus className="size-3.5" />, onPress: p.onNewTag }}
       >
-        {s?.tags.map((t) => (
-          <div key={t} className={ROW} style={{ paddingLeft: 26 }} onClick={() => p.onRefSelect(t)} onContextMenu={(e) => p.onTagMenu(e, t)}>
-            <Tag className="size-4 flex-none text-muted" />
-            <span className="truncate">{t}</span>
-          </div>
-        ))}
+        {filtering
+          ? matchedTags.map((t) => (
+              <div key={t} className={ROW} style={{ paddingLeft: 26 }} title={t} onClick={() => p.onRefSelect(t)} onContextMenu={(e) => p.onTagMenu(e, t)}>
+                <Tag className="size-4 flex-none text-muted" />
+                <span className="truncate">{t}</span>
+              </div>
+            ))
+          : s?.tags.map((t) => (
+              <div key={t} className={ROW} style={{ paddingLeft: 26 }} onClick={() => p.onRefSelect(t)} onContextMenu={(e) => p.onTagMenu(e, t)}>
+                <Tag className="size-4 flex-none text-muted" />
+                <span className="truncate">{t}</span>
+              </div>
+            ))}
+        {filtering && !matchedTags.length && noMatches}
       </Section>
       <Section
         collapsed={collapsed}
@@ -166,38 +222,61 @@ export function Sidebar(p: Props) {
         id="remotes"
         title="Remotes"
         icon={<Cloud className="size-3.5" />}
-        count={remoteNames.length}
+        count={filtering ? matchedRemoteCount : remoteNames.length}
+        forceOpen={filtering}
         action={{ label: 'Add remote', icon: <Plus className="size-3.5" />, onPress: p.onAddRemote }}
       >
-        {s && !remoteNames.length && (
-          <div className={`${ROW} text-muted hover:text-foreground`} style={{ paddingLeft: 26 }} onClick={p.onAddRemote}>
-            <Plus className="size-4 flex-none" />
-            <span className="truncate">Add remote…</span>
-          </div>
-        )}
-        {remoteNames.map((r) => {
-          const key = `remote/${r}`
-          const isOpen = !collapsed.has(key)
-          const branches = byRemote.get(r) ?? []
-          const url = s?.remoteUrls[r]
-          return (
-            <div key={r}>
-              <div className={ROW} style={{ paddingLeft: 8 }} title={url ? `${r}: ${url}` : r} onClick={() => toggle(key)} onContextMenu={(e) => p.onRemoteMenu(e, r)}>
-                <Chevron open={isOpen} />
-                <Cloud className="size-4 flex-none text-muted" />
-                <span className="truncate">{r}</span>
+        {filtering ? (
+          <>
+            {matchedRemotes.map(({ remote: r, branches }) => (
+              <div key={r}>
+                <div
+                  className={ROW}
+                  style={{ paddingLeft: 8 }}
+                  title={s?.remoteUrls[r] ? `${r}: ${s.remoteUrls[r]}` : r}
+                  onContextMenu={(e) => p.onRemoteMenu(e, r)}
+                >
+                  <Cloud className="size-4 flex-none text-muted" />
+                  <span className="truncate">{r}</span>
+                </div>
+                {branches.map((b) => branchRow(b, b.name, 0, highlighted(b)))}
               </div>
-              {isOpen &&
-                (branches.length ? (
-                  renderTree(buildTree(branches, key, r.length + 1), 1)
-                ) : (
-                  <div className="truncate py-1 pr-2 text-xs text-muted" style={{ paddingLeft: 40 }}>
-                    No branches yet — push or fetch
+            ))}
+            {!matchedRemotes.length && noMatches}
+          </>
+        ) : (
+          <>
+            {s && !remoteNames.length && (
+              <div className={`${ROW} text-muted hover:text-foreground`} style={{ paddingLeft: 26 }} onClick={p.onAddRemote}>
+                <Plus className="size-4 flex-none" />
+                <span className="truncate">Add remote…</span>
+              </div>
+            )}
+            {remoteNames.map((r) => {
+              const key = `remote/${r}`
+              const isOpen = !collapsed.has(key)
+              const branches = byRemote.get(r) ?? []
+              const url = s?.remoteUrls[r]
+              return (
+                <div key={r}>
+                  <div className={ROW} style={{ paddingLeft: 8 }} title={url ? `${r}: ${url}` : r} onClick={() => toggle(key)} onContextMenu={(e) => p.onRemoteMenu(e, r)}>
+                    <Chevron open={isOpen} />
+                    <Cloud className="size-4 flex-none text-muted" />
+                    <span className="truncate">{r}</span>
                   </div>
-                ))}
-            </div>
-          )
-        })}
+                  {isOpen &&
+                    (branches.length ? (
+                      renderTree(buildTree(branches, key, r.length + 1), 1)
+                    ) : (
+                      <div className="truncate py-1 pr-2 text-xs text-muted" style={{ paddingLeft: 40 }}>
+                        No branches yet — push or fetch
+                      </div>
+                    ))}
+                </div>
+              )
+            })}
+          </>
+        )}
       </Section>
       <Section collapsed={collapsed} toggle={toggle} id="stashes" title="Stashes" icon={<Archive className="size-3.5" />} count={s?.stashes.length ?? 0}>
         {s?.stashes.map((st) => (
@@ -229,16 +308,20 @@ function Section(props: {
   title: string
   icon: ReactNode
   count?: number
+  /** Shown open regardless of the stored collapsed state (used while filtering). */
+  forceOpen?: boolean
   /** Small button at the end of the header (shown on hover). */
   action?: { label: string; icon: ReactNode; onPress: () => void }
   children: ReactNode
 }) {
-  const isOpen = !props.collapsed.has('section:' + props.id)
+  const isOpen = props.forceOpen || !props.collapsed.has('section:' + props.id)
   return (
     <div className="mt-3">
       <div
-        className="group flex h-7 cursor-default items-center gap-1.5 px-2 text-[11px] font-semibold tracking-wider text-muted uppercase hover:text-foreground"
-        onClick={() => props.toggle('section:' + props.id)}
+        className={`group flex h-7 items-center gap-1.5 px-2 text-[11px] font-semibold tracking-wider text-muted uppercase hover:text-foreground ${props.forceOpen ? '' : 'cursor-default'}`}
+        onClick={() => {
+          if (!props.forceOpen) props.toggle('section:' + props.id)
+        }}
       >
         <Chevron open={isOpen} />
         {props.icon}
