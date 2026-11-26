@@ -25,6 +25,11 @@ const DIFF_OPTS = ['--no-color', '--no-ext-diff', '--src-prefix=a/', '--dst-pref
 const FS = '\x1f' // field separator
 const RS = '\x1e' // record separator
 
+const LOG_FMT = ['%H', '%P', '%an', '%ae', '%at', '%s', '%D'].join(FS) + RS
+const HASH_FMT = ['%H', '%ct'].join(FS) + RS
+// An empty repository (no commits yet) is not an error for the UI.
+const EMPTY_REPO = /does not have any commits|unknown revision|bad default revision/
+
 export class Repo {
   constructor(public path: string) {}
 
@@ -221,32 +226,111 @@ export class Repo {
   }
 
   async log(limit: number, allBranches: boolean, remoteNames: string[]): Promise<Commit[]> {
-    const fmt = ['%H', '%P', '%an', '%ae', '%at', '%s', '%D'].join(FS) + RS
-    const args = ['log', '--date-order', `--pretty=format:${fmt}`, `-n${limit}`]
-    // Not --all: that would include refs/stash and its internal commits.
-    args.push(...(allBranches ? ['--branches', '--remotes', '--tags', 'HEAD'] : ['HEAD']))
+    const args = ['log', '--date-order', `--pretty=format:${LOG_FMT}`, `-n${limit}`, ...this.logScope(allBranches)]
     const r = await window.api.git(this.path, args)
     if (!r.ok) {
-      // Empty repository (no commits yet) is not an error for the UI.
-      if (/does not have any commits|unknown revision|bad default revision/.test(r.stderr)) return []
+      if (EMPTY_REPO.test(r.stderr)) return []
       throw new GitError(args, r.stderr, r.code)
     }
-    return r.stdout
-      .split(RS)
-      .map((s) => s.replace(/^\n/, ''))
-      .filter(Boolean)
-      .map((rec) => {
-        const [hash, parents, author, email, at, subject, refs] = rec.split(FS)
-        return {
-          hash,
-          parents: parents ? parents.split(' ') : [],
-          author,
-          email,
-          date: +at,
-          subject,
-          refs: parseRefs(refs, remoteNames)
-        }
-      })
+    return parseLog(r.stdout, remoteNames)
+  }
+
+  /** Revision scope shared by log() and searchLog(). Not --all: that would include refs/stash
+   *  and its internal commits. */
+  private logScope(allBranches: boolean): string[] {
+    return allBranches ? ['--branches', '--remotes', '--tags', 'HEAD'] : ['HEAD']
+  }
+
+  /** Run a log-like command, returning null when the repository has no commits yet. */
+  private async logOutput(args: string[]): Promise<string | null> {
+    const r = await window.api.git(this.path, args)
+    if (r.ok) return r.stdout
+    if (EMPTY_REPO.test(r.stderr)) return null
+    throw new GitError(args, r.stderr, r.code)
+  }
+
+  /** Search the whole history of the chosen scope: commit messages, authors, hash prefixes and
+   *  branch/tag names. Returns the first `limit` commits (newest first) and the total match count. */
+  async searchLog(
+    query: string,
+    limit: number,
+    allBranches: boolean,
+    remoteNames: string[]
+  ): Promise<{ commits: Commit[]; total: number }> {
+    const q = query.trim()
+    if (!q) return { commits: [], total: 0 }
+    const scope = this.logScope(allBranches)
+    const lower = q.toLowerCase()
+
+    // hash -> commit time (0 until filled in below)
+    const found = new Map<string, number>()
+    const extras = new Set<string>()
+    const add = (hash: string | undefined, date?: number) => {
+      const h = hash?.trim()
+      if (!h) return
+      if (date !== undefined) found.set(h, date)
+      else if (!found.has(h)) found.set(h, 0)
+    }
+
+    // --grep and --author have to be separate runs: git ANDs them into one query.
+    const grep = (field: 'grep' | 'author') =>
+      this.logOutput(['log', '-i', '--fixed-strings', `--${field}=${q}`, `--format=${HASH_FMT}`, ...scope])
+    const [byMessage, byAuthor] = await Promise.all([grep('grep'), grep('author')])
+    for (const out of [byMessage, byAuthor]) {
+      for (const c of parseHashes(out ?? '')) add(c.hash, c.date)
+    }
+
+    // A (short) hash typed into the search box.
+    if (/^[0-9a-f]{4,40}$/i.test(q)) {
+      const h = (await this.tryRun(['rev-parse', '--verify', '-q', `${q}^{commit}`]))?.trim()
+      if (h) extras.add(h)
+    }
+
+    // Branches, remote branches and tags whose name contains the query.
+    const refs = await this.tryRun([
+      'for-each-ref',
+      `--format=%(refname)${FS}%(refname:short)`,
+      'refs/heads',
+      'refs/remotes',
+      'refs/tags'
+    ])
+    let refCount = 0
+    for (const line of (refs ?? '').split('\n')) {
+      if (refCount >= 50) break
+      const [full, short] = line.split(FS)
+      if (!full || full.endsWith('/HEAD') || !short?.toLowerCase().includes(lower)) continue
+      refCount++
+      const h = (await this.tryRun(['rev-parse', '--verify', '-q', `${full}^{commit}`]))?.trim()
+      if (h) extras.add(h)
+    }
+
+    for (const h of extras) {
+      if (!allBranches && !(await this.isAncestor(h))) continue
+      add(h)
+    }
+
+    // Commit times of hash/ref matches that the greps did not already return.
+    const missing = [...found].filter(([, t]) => t === 0).map(([h]) => h)
+    if (missing.length) {
+      const out = await this.logOutput(['log', '--no-walk=unsorted', `--format=${HASH_FMT}`, ...missing])
+      for (const c of parseHashes(out ?? '')) add(c.hash, c.date)
+    }
+
+    const hashes = [...found]
+      .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+      .map(([h]) => h)
+    const commits: Commit[] = []
+    const wanted = hashes.slice(0, Math.max(0, limit))
+    for (let i = 0; i < wanted.length; i += 500) {
+      const out = await this.logOutput(['log', '--no-walk=unsorted', `--pretty=format:${LOG_FMT}`, ...wanted.slice(i, i + 500)])
+      commits.push(...parseLog(out ?? '', remoteNames))
+    }
+    return { commits, total: hashes.length }
+  }
+
+  private async isAncestor(hash: string): Promise<boolean> {
+    const r = await window.api.git(this.path, ['merge-base', '--is-ancestor', hash, 'HEAD'])
+    return r.ok
   }
 
   async commitDetail(hash: string): Promise<CommitDetail> {
@@ -525,6 +609,36 @@ export class Repo {
   stashDrop(ref: string) {
     return this.run(['stash', 'drop', ref])
   }
+}
+
+function parseLog(out: string, remoteNames: string[]): Commit[] {
+  return out
+    .split(RS)
+    .map((s) => s.replace(/^\n/, ''))
+    .filter(Boolean)
+    .map((rec) => {
+      const [hash, parents, author, email, at, subject, refs] = rec.split(FS)
+      return {
+        hash,
+        parents: parents ? parents.split(' ') : [],
+        author,
+        email,
+        date: +at,
+        subject,
+        refs: parseRefs(refs, remoteNames)
+      }
+    })
+}
+
+function parseHashes(out: string): { hash: string; date: number }[] {
+  return out
+    .split(RS)
+    .map((s) => s.replace(/^\n/, ''))
+    .filter(Boolean)
+    .map((rec) => {
+      const [hash, at] = rec.split(FS)
+      return { hash, date: +at }
+    })
 }
 
 function parseRefs(d: string, remoteNames: string[]): RefLabel[] {

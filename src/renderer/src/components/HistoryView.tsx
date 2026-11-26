@@ -24,6 +24,11 @@ export function HistoryView({ repo, reloadKey, remotes, selectRef, onCommitMenu,
   const [limit, setLimit] = useState(PAGE)
   const [allBranches, setAllBranches] = useState(true)
   const [search, setSearch] = useState('')
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<Commit[]>([])
+  const [total, setTotal] = useState(0)
+  const [resultQuery, setResultQuery] = useState('')
+  const [searchLimit, setSearchLimit] = useState(PAGE)
   const [selected, setSelected] = useState<string | null>(null)
   const [detail, setDetail] = useState<CommitDetail | null>(null)
   const [selFile, setSelFile] = useState<FileChange | null>(null)
@@ -33,6 +38,16 @@ export function HistoryView({ repo, reloadKey, remotes, selectRef, onCommitMenu,
   const [bottomH, setBottomH] = useState(340)
   const listRef = useRef<HTMLDivElement>(null)
   const pendingRef = useRef<string | null>(null)
+  const lastQuery = useRef('')
+
+  const commitQuery = (q: string) => {
+    if (lastQuery.current === q) return
+    lastQuery.current = q
+    setQuery(q)
+    setSearchLimit(PAGE)
+    setResults([])
+    setTotal(0)
+  }
 
   // Load log.
   useEffect(() => {
@@ -50,18 +65,41 @@ export function HistoryView({ repo, reloadKey, remotes, selectRef, onCommitMenu,
     }
   }, [repo, reloadKey, limit, allBranches, remotes.join(',')])
 
+  // Debounce the search box; clearing it takes effect immediately.
+  useEffect(() => {
+    const q = search.trim()
+    if (!q) {
+      commitQuery('')
+      return
+    }
+    const t = setTimeout(() => commitQuery(q), 300)
+    return () => clearTimeout(t)
+  }, [search])
+
+  // Search the whole history, not just the loaded log.
+  useEffect(() => {
+    if (!query) return
+    let cancelled = false
+    repo
+      .searchLog(query, searchLimit, allBranches, remotes)
+      .then((r) => {
+        if (cancelled) return
+        setResults(r.commits)
+        setTotal(r.total)
+        setResultQuery(query)
+      })
+      .catch((e) => {
+        if (cancelled) return
+        setResultQuery(query)
+        onError(e)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [repo, reloadKey, query, searchLimit, allBranches, remotes.join(',')])
+
   const graph = useMemo(() => layoutGraph(commits), [commits])
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return null
-    return commits.filter(
-      (c) =>
-        c.subject.toLowerCase().includes(q) ||
-        c.author.toLowerCase().includes(q) ||
-        c.hash.startsWith(q) ||
-        c.refs.some((r) => r.name.toLowerCase().includes(q))
-    )
-  }, [commits, search])
+  const filtered = query ? results : null
   const list = filtered ?? commits
   const graphW = filtered ? 0 : Math.min(graph.maxLanes * LANE_W + 12, 280)
 
@@ -85,9 +123,10 @@ export function HistoryView({ repo, reloadKey, remotes, selectRef, onCommitMenu,
 
   const selectHash = (hash: string) => {
     pendingRef.current = hash
+    setSearch('')
+    commitQuery('')
     const i = commits.findIndex((c) => c.hash === hash)
     if (i >= 0) {
-      setSearch('')
       setSelected(hash)
       requestAnimationFrame(() => scrollToIndex(i))
       pendingRef.current = null
@@ -101,6 +140,7 @@ export function HistoryView({ repo, reloadKey, remotes, selectRef, onCommitMenu,
   useEffect(() => {
     if (!selectRef) return
     setSearch('')
+    commitQuery('')
     repo.tryRun(['rev-parse', '--verify', '-q', `${selectRef.ref}^{commit}`]).then((h) => {
       const hash = h?.trim()
       if (hash) selectHash(hash)
@@ -117,6 +157,12 @@ export function HistoryView({ repo, reloadKey, remotes, selectRef, onCommitMenu,
       pendingRef.current = null
     }
   }, [commits])
+
+  // Clearing the search keeps the selected commit and scrolls back to it.
+  useEffect(() => {
+    if (query || !selected) return
+    selectHash(selected)
+  }, [query])
 
   // Load details of the selected commit.
   useEffect(() => {
@@ -153,8 +199,12 @@ export function HistoryView({ repo, reloadKey, remotes, selectRef, onCommitMenu,
   const onScroll = () => {
     const el = listRef.current!
     setScrollTop(el.scrollTop)
-    if (!filtered && el.scrollTop + el.clientHeight > el.scrollHeight - ROW_H * 40 && commits.length >= limit) {
-      setLimit((l) => l + PAGE)
+    if (el.scrollTop + el.clientHeight > el.scrollHeight - ROW_H * 40) {
+      if (query) {
+        if (results.length < total && results.length >= searchLimit) setSearchLimit((n) => n + PAGE)
+      } else if (commits.length >= limit) {
+        setLimit((l) => l + PAGE)
+      }
     }
   }
 
@@ -225,8 +275,11 @@ export function HistoryView({ repo, reloadKey, remotes, selectRef, onCommitMenu,
           </SearchField.Group>
         </SearchField>
         <span className="ml-auto text-xs text-muted tabular-nums">
-          {filtered ? `${filtered.length} of ` : ''}
-          {commits.length.toLocaleString()} commits
+          {query
+            ? resultQuery === query
+              ? `${results.length.toLocaleString()} of ${total.toLocaleString()} matches`
+              : 'Searching…'
+            : `${commits.length.toLocaleString()} commits loaded`}
         </span>
       </div>
 
@@ -281,8 +334,8 @@ export function HistoryView({ repo, reloadKey, remotes, selectRef, onCommitMenu,
             )
           })}
         </div>
-        {loaded && list.length === 0 && (
-          <EmptyHint icon={<GitCommitHorizontal className="size-8 opacity-40" />}>{filtered ? 'No matching commits' : 'No commits yet'}</EmptyHint>
+        {loaded && list.length === 0 && (!query || resultQuery === query) && (
+          <EmptyHint icon={<GitCommitHorizontal className="size-8 opacity-40" />}>{query ? 'No matching commits' : 'No commits yet'}</EmptyHint>
         )}
       </div>
 
