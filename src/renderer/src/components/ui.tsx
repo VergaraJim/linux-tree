@@ -1,10 +1,15 @@
 import { Button, Tooltip, toast } from '@heroui/react'
+import { AlertCircle } from 'lucide-react'
 import { memo, type ReactNode } from 'react'
 
 // ---------- notifications ----------
 
+export function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
 export function notifyError(title: string, err: unknown): void {
-  const msg = err instanceof Error ? err.message : String(err)
+  const msg = errorMessage(err)
   toast.danger(title, {
     description: (
       <pre className="selectable-text max-h-56 overflow-auto font-mono text-xs whitespace-pre-wrap break-words">{msg}</pre>
@@ -15,6 +20,27 @@ export function notifyError(title: string, err: unknown): void {
 
 export function notifySuccess(title: string, description?: ReactNode): void {
   toast.success(title, { description })
+}
+
+// ---------- error state ----------
+
+export function ErrorState({ title, message, onRetry }: { title: string; message?: string; onRetry?: () => void }) {
+  return (
+    <div className="flex h-full min-h-32 flex-col items-center justify-center gap-3 p-6 text-center text-sm text-muted">
+      <AlertCircle className="size-8 text-danger opacity-80" strokeWidth={1.5} />
+      <div className="font-medium text-foreground">{title}</div>
+      {message && (
+        <pre className="selectable-text max-h-40 w-full max-w-xl overflow-auto rounded-lg bg-default/60 px-3 py-2 text-left font-mono text-xs whitespace-pre-wrap break-words">
+          {message}
+        </pre>
+      )}
+      {onRetry && (
+        <Button size="sm" variant="secondary" onPress={onRetry}>
+          Retry
+        </Button>
+      )}
+    </div>
+  )
 }
 
 // ---------- dates ----------

@@ -103,18 +103,22 @@ Git runs without a terminal, so it never hangs on a hidden prompt:
 - **Commit graph** across all branches (or current only), ref labels, search, infinite scroll,
   commit details + diffs. Right-click: checkout, branch/tag here, cherry-pick, revert, reset.
 - **Branch folders**: `feature/x` shown as a collapsible tree, ↑ahead / ↓behind counts,
-  double-click to check out (remote branches create a tracking branch).
+  double-click to check out (remote branches create a tracking branch). A filter box for
+  branches and tags above the list narrows them down; Enter checks out the first match.
 - **Git-flow**: init / start / finish feature, release, hotfix. Uses Sourcetree-compatible
   `gitflow.*` config keys. Finish merges with `--no-ff`, tags releases/hotfixes, back-merges
   the tag into develop, deletes the branch (local + remote) and can push. If a merge conflicts,
   resolve, commit, and run Finish again — it picks up where it left off.
 - **File status**: stage/unstage/discard whole files, **hunks or individual lines**
   (click lines, Shift+click for a range), conflict helpers (ours/theirs/mark resolved),
-  commit with amend and push-after.
+  commit with amend and push-after. Right-click new files → **Ignore…** (this file, its
+  extension, a parent folder or a custom pattern; saved to .gitignore, .git/info/exclude
+  or the global ignore file).
 - **Interactive rebase** (right-click a commit): reorder, pick, reword, edit, squash, fixup,
   drop. Continue / Skip / Abort from the status bar when a rebase stops.
 - **Reset** current branch to any commit: soft, mixed, keep or hard.
-- Pull, push (sets upstream automatically), fetch, merge, rebase, stash, tags.
+- Pull (merge, rebase or fast-forward only — the last choice is remembered), push (sets
+  upstream automatically), fetch, merge, rebase, stash, tags.
 
 ## Keyboard shortcuts
 
