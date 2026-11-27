@@ -16,18 +16,26 @@ interface Props {
   operation: string | null
   run: (label: string, fn: () => Promise<unknown>) => Promise<boolean>
   onCommit: (message: string, amend: boolean, push: boolean) => Promise<boolean>
-  onFileMenu: (e: MouseEvent, f: FileChange, staged: boolean) => void
+  onFileMenu: (e: MouseEvent, files: FileChange[], staged: boolean) => void
   onError: (e: unknown) => void
 }
 
 type Row = { path: string; staged: boolean }
+
+const draftKey = (path: string) => `commitDraft:${path}`
 
 export function StatusView({ repo, status, reloadKey, operation, run, onCommit, onFileMenu, onError }: Props) {
   const dialog = useDialog()
   const [selected, setSelected] = useState<Row[]>([])
   const anchor = useRef<Row | null>(null)
   const [diff, setDiff] = useState<string | null>(null)
-  const [message, setMessage] = useState('')
+  const [message, setMessage] = useState(() => {
+    try {
+      return localStorage.getItem(draftKey(repo.path)) ?? ''
+    } catch {
+      return ''
+    }
+  })
   const [amend, setAmend] = useState(false)
   const [pushAfter, setPushAfter] = useState(() => {
     try {
@@ -87,6 +95,17 @@ export function StatusView({ repo, status, reloadKey, operation, run, onCommit, 
     if (!amend) return
     repo.tryRun(['log', '-1', '--format=%B']).then((m) => m && !message.trim() && setMessage(m.trim()))
   }, [amend])
+
+  // Keep the unfinished message per repository. While amending, the prefill must not overwrite the draft.
+  useEffect(() => {
+    if (amend) return
+    try {
+      if (message.trim()) localStorage.setItem(draftKey(repo.path), message)
+      else localStorage.removeItem(draftKey(repo.path))
+    } catch {
+      /* ignore */
+    }
+  }, [message, amend, repo.path])
 
   const toggleFile = (f: FileChange, staged: boolean) =>
     run(staged ? 'Unstaging…' : 'Staging…', () => (staged ? repo.unstage([f.path]) : repo.stage([f.path])))
@@ -158,6 +177,11 @@ export function StatusView({ repo, status, reloadKey, operation, run, onCommit, 
     if (!canCommit) return
     const ok = await onCommit(message.trim(), amend, pushAfter)
     if (ok) {
+      try {
+        localStorage.removeItem(draftKey(repo.path))
+      } catch {
+        /* ignore */
+      }
       setMessage('')
       setAmend(false)
     }
@@ -199,9 +223,14 @@ export function StatusView({ repo, status, reloadKey, operation, run, onCommit, 
           onClick={(e) => selectRow(e, f, staged, files)}
           onDoubleClick={() => toggleFile(f, staged)}
           onContextMenu={(e) => {
-            setSelected([{ path: f.path, staged }])
-            anchor.current = { path: f.path, staged }
-            onFileMenu(e, f, staged)
+            const row: Row = { path: f.path, staged }
+            if (selected.some((s) => s.path === f.path && s.staged === staged)) {
+              onFileMenu(e, files.filter((x) => selected.some((s) => s.path === x.path && s.staged === staged)), staged)
+            } else {
+              setSelected([row])
+              anchor.current = row
+              onFileMenu(e, [f], staged)
+            }
           }}
           title={f.oldPath ? `${f.oldPath} → ${f.path}` : f.path}
         >
@@ -240,10 +269,10 @@ export function StatusView({ repo, status, reloadKey, operation, run, onCommit, 
     action: React.ReactNode
   }) => (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-9 flex-none items-center gap-2 px-3">
+      <div className="flex min-h-9 flex-none flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1">
         <span className="text-[11px] font-semibold tracking-wide text-muted uppercase">{title}</span>
         <span className="rounded-full bg-default px-1.5 text-[11px] leading-[18px] font-semibold text-muted tabular-nums">{count}</span>
-        <span className="ml-auto">{action}</span>
+        <span className="ml-auto flex flex-wrap items-center justify-end gap-1">{action}</span>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
         {files.length ? (
@@ -278,7 +307,7 @@ export function StatusView({ repo, status, reloadKey, operation, run, onCommit, 
             action: (
               <>
                 {stagedSel.length > 0 && (
-                  <Button size="sm" variant="secondary" className="mr-1 h-6 px-2 text-xs" onPress={unstageSelected}>
+                  <Button size="sm" variant="secondary" className="h-6 px-2 text-xs" onPress={unstageSelected}>
                     <Minus className="size-3.5" /> Unstage {stagedSel.length}
                   </Button>
                 )}
@@ -309,7 +338,7 @@ export function StatusView({ repo, status, reloadKey, operation, run, onCommit, 
                       {unstagedSel.length === 1 ? 'Stage 1 file' : `Stage ${unstagedSel.length} files`}
                     </Button>
                     <span
-                      className="ml-1 inline-block align-middle"
+                      className="inline-flex"
                       title={canDiscard ? undefined : 'Only files with modifications can be discarded — new and conflicted files are not allowed'}
                     >
                       <Button size="sm" variant="danger-soft" className="h-6 px-2 text-xs" isDisabled={!canDiscard} onPress={discardSelected}>
@@ -317,7 +346,7 @@ export function StatusView({ repo, status, reloadKey, operation, run, onCommit, 
                       </Button>
                     </span>
                     <span
-                      className="ml-1 inline-block align-middle"
+                      className="inline-flex"
                       title={canDelete ? undefined : 'Only new (untracked, status “?”) files can be deleted'}
                     >
                       <Button size="sm" variant="danger-soft" className="h-6 px-2 text-xs" isDisabled={!canDelete} onPress={deleteSelected}>
@@ -399,7 +428,7 @@ export function StatusView({ repo, status, reloadKey, operation, run, onCommit, 
             </span>
           )}
         </div>
-        <div className="mt-2.5 flex items-center gap-5">
+        <div className="mt-2.5 flex flex-wrap items-center gap-x-5 gap-y-2">
           <Checkbox variant="secondary" className="group" isSelected={amend} onChange={(v: boolean) => setAmend(v)}>
             <Checkbox.Content>
               <Checkbox.Control className="border border-border-tertiary group-data-[selected=true]:border-transparent">

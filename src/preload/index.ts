@@ -11,6 +11,9 @@ const api = {
   git: (cwd: string, args: string[], opts?: { input?: string; env?: Record<string, string> }): Promise<GitResult> =>
     ipcRenderer.invoke('git:run', cwd, args, opts),
   exists: (cwd: string, p: string): Promise<boolean> => ipcRenderer.invoke('fs:exists', cwd, p),
+  /** Append lines to a file, skipping lines it already contains. Resolves to an error message or null. */
+  appendLines: (cwd: string, file: string, lines: string[]): Promise<string | null> =>
+    ipcRenderer.invoke('fs:appendLines', cwd, file, lines),
   writeTemp: (content: string): Promise<string> => ipcRenderer.invoke('tmp:write', content),
   onAskpass: (cb: (req: { id: number; prompt: string }) => void) => {
     const h = (_e: unknown, req: { id: number; prompt: string }): void => cb(req)

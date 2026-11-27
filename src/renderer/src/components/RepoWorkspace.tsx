@@ -11,6 +11,7 @@ import {
   CloudCog,
   Copy,
   ExternalLink,
+  EyeOff,
   Flag,
   FolderOpen,
   GitBranch,
@@ -32,8 +33,9 @@ import {
   Workflow
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
-import { Repo } from '../lib/git'
+import { Repo, type PullStrategy } from '../lib/git'
 import { classify, finishFlow, FLOW_DEFAULTS, initFlow, readFlowConfig, startFlow, type FlowConfig, type FlowType } from '../lib/gitflow'
+import { ignoreOptions } from '../lib/ignore'
 import type { Branch, Commit, FileChange, RepoState, Stash } from '../lib/types'
 import { ConflictResolver } from './ConflictResolver'
 import { ContextMenu, MenuBody, type MenuItem, type MenuState } from './ContextMenu'
@@ -44,12 +46,37 @@ import { RebaseDialog } from './RebaseDialog'
 import { RemoteDialog, type RemoteDialogResult } from './RemoteDialog'
 import { Sidebar, type View } from './Sidebar'
 import { StatusView } from './StatusView'
-import { IconButton, notifyError, notifySuccess, ToolbarButton } from './ui'
+import { ErrorState, errorMessage, IconButton, notifyError, notifySuccess, ToolbarButton } from './ui'
 
 const FLOW_LABEL: Record<FlowType, string> = { feature: 'Feature', release: 'Release', hotfix: 'Hotfix' }
 const I = 'size-4'
 const AUTO_REFRESH_MS = 5000
+const PULL_KEY = 'pullStrategy'
+const PULL_OPTIONS = [
+  { value: 'merge', label: 'Merge', description: 'Merge the remote changes into your branch (fast-forwards when possible)' },
+  { value: 'rebase', label: 'Rebase', description: 'Replay your local commits on top of the remote ones. Local changes are stashed and restored' },
+  { value: 'ff-only', label: 'Fast-forward only', description: 'Update only if you have no local commits' }
+]
 let menuId = 1
+
+/** The pull strategy the user picked last time; anything unknown or unreadable means merge. */
+function readPullStrategy(): PullStrategy {
+  try {
+    const v = localStorage.getItem(PULL_KEY)
+    if (v === 'rebase' || v === 'ff-only') return v
+  } catch {
+    // storage can be unavailable (private mode, disabled); fall back to the default
+  }
+  return 'merge'
+}
+
+function storePullStrategy(strategy: PullStrategy) {
+  try {
+    localStorage.setItem(PULL_KEY, strategy)
+  } catch {
+    // not being able to remember the choice must not break pulling
+  }
+}
 
 interface Props {
   path: string
@@ -61,6 +88,7 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
   const dialog = useDialog()
   const repo = useMemo(() => new Repo(path), [path])
   const [state, setState] = useState<RepoState | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [flow, setFlow] = useState<FlowConfig | null>(null)
   const [view, setView] = useState<View>('history')
   const [reloadKey, setReloadKey] = useState(0)
@@ -76,8 +104,10 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
   } | null>(null)
   const [pushDlg, setPushDlg] = useState<number | null>(null)
   const [conflictDlg, setConflictDlg] = useState<{ key: number; initialPath?: string } | null>(null)
+  const [pullStrategy, setPullStrategy] = useState<PullStrategy>(readPullStrategy)
   const busyRef = useRef(false)
   const firstLoad = useRef(true)
+  const stateRef = useRef<RepoState | null>(null)
 
   // ---------- helpers ----------
 
@@ -97,11 +127,13 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
         repo.tryRun(['for-each-ref', '--format=%(objectname) %(refname)'])
       ])
       if (gen !== loadGen.current) return // a newer load started meanwhile; drop this result
+      setLoadError(null)
       const refsSig = JSON.stringify([refs, s.head, s.headHash])
       const restSig = JSON.stringify([s, f])
       const refsChanged = refsSig !== sigRef.current.refs
       if (!force && !refsChanged && restSig === sigRef.current.rest) return
       sigRef.current = { refs: refsSig, rest: restSig }
+      stateRef.current = s
       setState(s)
       setFlow(f)
       // Commits only change when a ref (or detached HEAD) moves.
@@ -118,8 +150,11 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
   const refresh = useCallback(async () => {
     try {
       await load(true)
+      setLoadError(null)
     } catch (e) {
-      onError(e)
+      setLoadError(errorMessage(e))
+      // Only toast once there is something on screen; the first-load failure is shown in place.
+      if (stateRef.current) onError(e)
     }
   }, [load, onError])
 
@@ -213,6 +248,31 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
 
   const doPush = () => setPushDlg(Date.now())
 
+  const choosePullStrategy = (strategy: PullStrategy) => {
+    setPullStrategy(strategy)
+    storePullStrategy(strategy)
+  }
+
+  const doPull = async () => {
+    if (!remotes.length) return addRemote('Pulling needs a remote. Add one and Linux Tree will pull from it.', 'pull')
+    const upstream = currentBranch?.upstream
+    const v = await dialog.prompt({
+      title: `Pull into ${head ?? 'HEAD'}`,
+      icon: <ArrowDownToLine className="size-5" />,
+      message: upstream ? (
+        <>
+          From <b>{upstream}</b>
+        </>
+      ) : undefined,
+      fields: [{ name: 'strategy', label: 'How to pull', type: 'radio', value: pullStrategy, options: PULL_OPTIONS }],
+      okLabel: 'Pull'
+    })
+    if (!v) return
+    const strategy: PullStrategy = v.strategy === 'rebase' || v.strategy === 'ff-only' ? v.strategy : 'merge'
+    choosePullStrategy(strategy)
+    run('Pulling…', () => repo.pull(strategy), 'Pull complete')
+  }
+
   const doCommit = (message: string, amend: boolean, push: boolean) =>
     run(push ? 'Committing and pushing…' : 'Committing…', async () => {
       await repo.commit(message, amend)
@@ -240,6 +300,26 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
     })
     if (!v || !String(v.name).trim()) return
     run('Creating branch…', () => repo.createBranch(String(v.name).trim(), start, !!v.checkout))
+  }
+
+  const tagDialog = async (ref: string, label: string) => {
+    const fields: Parameters<typeof dialog.prompt>[0]['fields'] = [
+      { name: 'name', label: 'Tag name', type: 'text', placeholder: 'e.g. v1.2.0' },
+      { name: 'msg', label: 'Message (annotated tag)', type: 'text', placeholder: 'optional' }
+    ]
+    if (remotes.length) fields.push({ name: 'push', label: 'Push tag to remote', type: 'checkbox', value: false })
+    const v = await dialog.prompt({
+      title: `Tag ${label}`,
+      icon: <Tag className="size-5" />,
+      fields,
+      okLabel: 'Create tag'
+    })
+    if (!v || !String(v.name).trim()) return
+    const name = String(v.name).trim()
+    run('Tagging…', async () => {
+      await repo.createTag(name, ref, String(v.msg) || undefined)
+      if (v.push && remotes.length) await repo.pushRefs(remote, [`refs/tags/${name}`])
+    })
   }
 
   const mergeDialog = async (preset?: string) => {
@@ -451,6 +531,7 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
       items.push({ label: `Check out`, action: () => checkoutBranch(b), icon: <ArrowRightLeft className={I} /> })
       items.push({ label: `Merge into ${head ?? 'HEAD'}`, action: () => mergeDialog(b.name), icon: <GitMerge className={I} /> })
       items.push({ label: `New branch from here…`, action: () => newBranch(b.name, b.name), icon: <GitBranchPlus className={I} /> })
+      items.push({ label: `New tag here…`, action: () => tagDialog(b.name, b.name), icon: <Tag className={I} /> })
       items.push({ separator: true })
       items.push({ label: `Delete from remote…`, action: () => deleteBranch(b), danger: true, icon: <Trash2 className={I} /> })
     } else {
@@ -476,6 +557,7 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
       })
       items.push({ separator: true })
       items.push({ label: `New branch from here…`, action: () => newBranch(b.name, b.name), icon: <GitBranchPlus className={I} /> })
+      items.push({ label: `New tag here…`, action: () => tagDialog(b.name, b.name), icon: <Tag className={I} /> })
       items.push({
         label: 'Rename…',
         icon: <Pencil className={I} />,
@@ -527,28 +609,7 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
         }
       },
       { label: 'New branch here…', action: () => newBranch(c.hash, short), icon: <GitBranchPlus className={I} /> },
-      {
-        label: 'New tag here…',
-        icon: <Tag className={I} />,
-        action: async () => {
-          const v = await dialog.prompt({
-            title: `Tag ${short}`,
-            icon: <Tag className="size-5" />,
-            fields: [
-              { name: 'name', label: 'Tag name', type: 'text', placeholder: 'e.g. v1.2.0' },
-              { name: 'msg', label: 'Message (annotated tag)', type: 'text', placeholder: 'optional' },
-              { name: 'push', label: 'Push tag to remote', type: 'checkbox', value: false }
-            ],
-            okLabel: 'Create tag'
-          })
-          if (!v || !String(v.name).trim()) return
-          const name = String(v.name).trim()
-          run('Tagging…', async () => {
-            await repo.createTag(name, c.hash, String(v.msg) || undefined)
-            if (v.push && remotes.length) await repo.pushRefs(remote, [`refs/tags/${name}`])
-          })
-        }
-      },
+      { label: 'New tag here…', action: () => tagDialog(c.hash, short), icon: <Tag className={I} /> },
       { separator: true },
       {
         label: `Interactive rebase after ${short}…`,
@@ -709,7 +770,7 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
     if (!r.fetch) await refresh()
     if (!ok || !then) return
     if (then === 'push') run('Pushing…', () => pushCurrent(r.name), `Pushed ${head} to ${r.name}`)
-    else run('Pulling…', () => repo.pull(), 'Pull complete')
+    else run('Pulling…', () => repo.pull(readPullStrategy()), 'Pull complete')
   }
 
   const removeRemote = async (name: string) => {
@@ -746,31 +807,125 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
     ])
   }
 
-  const fileMenu = (e: MouseEvent, f: FileChange, staged: boolean) => {
+  const ignoreDialog = async (files: FileChange[]) => {
+    const n = files.length
+    const v = await dialog.prompt({
+      title: n === 1 ? 'Ignore file' : `Ignore ${n} files`,
+      icon: <EyeOff className="size-5" />,
+      size: 'md',
+      fields: [
+        { name: 'pattern', label: 'What to ignore', type: 'radio', options: ignoreOptions(files.map((f) => f.path)) },
+        {
+          name: 'custom',
+          label: 'Custom pattern (optional, replaces the choice above)',
+          type: 'text',
+          placeholder: 'e.g. build/**/*.map'
+        },
+        {
+          name: 'target',
+          label: 'Save rule in',
+          type: 'select',
+          value: 'repo',
+          options: [
+            { value: 'repo', label: '.gitignore (shared with the repository)' },
+            { value: 'local', label: '.git/info/exclude (only this computer)' },
+            { value: 'global', label: 'Global ignore file (all repositories)' }
+          ]
+        }
+      ],
+      okLabel: 'Ignore'
+    })
+    if (!v) return
+    const custom = String(v.custom ?? '').trim()
+    const lines = custom ? [custom] : String(v.pattern).split('\n').filter(Boolean)
+    if (!lines.length) return
+    run('Ignoring…', () => repo.addIgnore(lines, v.target as 'repo' | 'local' | 'global'), 'Ignore rule added')
+  }
+
+  const fileMenu = (e: MouseEvent, files: FileChange[], staged: boolean) => {
+    const n = files.length
+    if (!n) return
+    const paths = files.map((f) => f.path)
     const items: MenuItem[] = []
-    if (f.status === 'U') {
+    if (n > 1) items.push({ header: `${n} files selected` })
+
+    const allConflicted = files.every((f) => f.status === 'U')
+    const someConflicted = files.some((f) => f.status === 'U')
+    const someNew = files.some((f) => f.status === '?')
+    if (allConflicted) {
       items.push({
         label: 'Resolve conflicts…',
         icon: <GitMerge className={I} />,
-        action: () => setConflictDlg({ key: Date.now(), initialPath: f.path })
+        action: () => setConflictDlg({ key: Date.now(), initialPath: files[0].path })
       })
-    } else if (staged) {
-      items.push({ label: 'Unstage', action: () => run('Unstaging…', () => repo.unstage([f.path])), icon: <Minus className={I} /> })
-    } else {
-      items.push({ label: 'Stage', action: () => run('Staging…', () => repo.stage([f.path])), icon: <Plus className={I} /> })
-      items.push({
-        label: f.status === '?' ? 'Delete file…' : 'Discard changes…',
-        danger: true,
-        icon: f.status === '?' ? <Trash2 className={I} /> : <Undo2 className={I} />,
-        action: async () => {
-          if (await dialog.confirm('Discard changes', <>Discard all changes to <b>{f.path}</b>? This cannot be undone.</>, 'Discard', true))
-            run('Discarding…', () => repo.discard([f]))
+    } else if (!someConflicted) {
+      if (staged) {
+        items.push({
+          label: n === 1 ? 'Unstage' : `Unstage ${n} files`,
+          action: () => run('Unstaging…', () => repo.unstage(paths)),
+          icon: <Minus className={I} />
+        })
+      } else {
+        items.push({
+          label: n === 1 ? 'Stage' : `Stage ${n} files`,
+          action: () => run('Staging…', () => repo.stage(paths)),
+          icon: <Plus className={I} />
+        })
+        if (!someNew) {
+          items.push({
+            label: n === 1 ? 'Discard changes…' : `Discard changes to ${n} files…`,
+            danger: true,
+            icon: <Undo2 className={I} />,
+            action: async () => {
+              if (
+                await dialog.confirm(
+                  'Discard changes',
+                  n === 1 ? (
+                    <>Discard all changes to <b>{paths[0]}</b>? This cannot be undone.</>
+                  ) : (
+                    <>Discard changes to <b>{n}</b> files? This cannot be undone.</>
+                  ),
+                  'Discard',
+                  true
+                )
+              )
+                run('Discarding…', () => repo.discard(files))
+            }
+          })
+        } else if (files.every((f) => f.status === '?')) {
+          items.push({ label: 'Ignore…', icon: <EyeOff className={I} />, action: () => ignoreDialog(files) })
+          items.push({
+            label: n === 1 ? 'Delete file…' : `Delete ${n} files…`,
+            danger: true,
+            icon: <Trash2 className={I} />,
+            action: async () => {
+              if (
+                await dialog.confirm(
+                  n === 1 ? 'Delete file' : 'Delete files',
+                  n === 1 ? (
+                    <>Delete new file <b>{paths[0]}</b>? This cannot be undone.</>
+                  ) : (
+                    <>Delete <b>{n}</b> new files? This cannot be undone.</>
+                  ),
+                  'Delete',
+                  true
+                )
+              )
+                run('Deleting…', () => repo.discard(files))
+            }
+          })
         }
-      })
+      }
     }
+
     items.push({ separator: true })
-    items.push({ label: 'Open file', action: () => window.api.openPath(`${repo.path}/${f.path}`), icon: <ExternalLink className={I} /> })
-    items.push({ label: 'Copy path', action: () => window.api.copy(f.path), icon: <Clipboard className={I} /> })
+    if (n === 1)
+      items.push({ label: 'Open file', action: () => window.api.openPath(`${repo.path}/${paths[0]}`), icon: <ExternalLink className={I} /> })
+    items.push({
+      label: n === 1 ? 'Copy path' : `Copy ${n} paths`,
+      action: () => window.api.copy(paths.join('\n')),
+      icon: <Clipboard className={I} />
+    })
     openMenu(e, items)
   }
 
@@ -784,11 +939,15 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
         <ToolbarButton
           icon={<ArrowDownToLine className="size-[18px]" />}
           label="Pull"
-          tooltip={!remotes.length ? 'No remote yet — click to add one' : currentBranch?.behind ? `Pull ${currentBranch.behind} new commit(s)` : 'Pull from remote'}
-          badge={currentBranch?.behind}
-          onPress={() =>
-            remotes.length ? run('Pulling…', () => repo.pull(), 'Pull complete') : addRemote('Pulling needs a remote. Add one and Linux Tree will pull from it.', 'pull')
+          tooltip={
+            !remotes.length
+              ? 'No remote yet — click to add one'
+              : currentBranch?.behind
+                ? `Pull ${currentBranch.behind} new commit(s) · ${pullStrategy}`
+                : `Pull from remote · ${pullStrategy}`
           }
+          badge={currentBranch?.behind}
+          onPress={doPull}
         />
         <ToolbarButton
           icon={<ArrowUpFromLine className="size-[18px]" />}
@@ -857,6 +1016,10 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
           onStashMenu={stashMenu}
           onRemoteMenu={remoteMenu}
           onAddRemote={() => addRemote()}
+          onNewTag={() => {
+            if (!state?.headHash) return onError('Create a commit before tagging.')
+            tagDialog('HEAD', head ?? state.headHash.slice(0, 7))
+          }}
           autoRefresh={{ ms: AUTO_REFRESH_MS, paused: !active || !!busy, resetKey: reloadKey, onTick: poll }}
         />
         <main className="min-w-0 flex-1 overflow-hidden rounded-xl border border-separator bg-surface shadow-surface">
@@ -875,11 +1038,14 @@ export function RepoWorkspace({ path, active, onStateChange }: Props) {
               onError={onError}
             />
           )}
-          {!state && (
-            <div className="flex h-full items-center justify-center">
-              <Spinner />
-            </div>
-          )}
+          {!state &&
+            (loadError ? (
+              <ErrorState title="Couldn’t read this repository" message={loadError} onRetry={refresh} />
+            ) : (
+              <div className="flex h-full items-center justify-center">
+                <Spinner />
+              </div>
+            ))}
         </main>
       </div>
 

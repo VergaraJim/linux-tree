@@ -1,3 +1,7 @@
+# 1.0.5
+
+- Major features added, some bug fixes
+
 # 1.0.4
 
 - Hotfix for icon problem

@@ -1,4 +1,4 @@
-import { Button, Input, ListBox, Modal, Select } from '@heroui/react'
+import { Button, Input, ListBox, Modal, Select, Spinner } from '@heroui/react'
 import { AlertTriangle, ArrowDown, ArrowUp, GitPullRequestArrow } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { Repo } from '../lib/git'
@@ -111,6 +111,12 @@ export function RebaseDialog({ repo, base, baseLabel, onCancel, onStart }: Props
           </Modal.Header>
           <Modal.Body className="flex flex-col gap-3">
             {error && <Notice tone="danger">{error}</Notice>}
+            {items === null && !error && (
+              <div className="flex min-h-40 flex-col items-center justify-center gap-3 p-6 text-sm text-muted">
+                <Spinner />
+                Loading commits…
+              </div>
+            )}
             {items && (
               <div className="max-h-[50vh] overflow-y-auto rounded-xl border border-separator">
                 {items.map((it, i) => {

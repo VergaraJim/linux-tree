@@ -138,6 +138,23 @@ ipcMain.handle('tmp:write', (_e, content: string) => {
   return p
 })
 ipcMain.handle('fs:exists', (_e, cwd: string, p: string) => existsSync(resolve(cwd, p)))
+// Append lines to a file (an ignore file), skipping lines already present exactly.
+// Returns an error message, or null on success.
+ipcMain.handle('fs:appendLines', (_e, cwd: string, file: string, lines: string[]): string | null => {
+  try {
+    const p = resolve(cwd, file)
+    mkdirSync(dirname(p), { recursive: true })
+    let content = existsSync(p) ? readFileSync(p, 'utf8') : ''
+    const present = new Set(content.split('\n').map((l) => l.replace(/\r$/, '')))
+    const added = lines.filter((l) => l && !present.has(l))
+    if (!added.length) return null
+    if (content && !content.endsWith('\n')) content += '\n'
+    writeFileSync(p, content + added.join('\n') + '\n')
+    return null
+  } catch (err) {
+    return (err as Error).message
+  }
+})
 ipcMain.handle('clipboard:write', (_e, t: string) => clipboard.writeText(t))
 
 app.whenReady().then(() => {
