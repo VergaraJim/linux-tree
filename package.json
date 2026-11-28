@@ -1,6 +1,6 @@
 {
   "name": "linux-tree",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "A Sourcetree-style Git GUI for Linux with built-in git-flow",
   "main": "./out/main/index.js",
   "scripts": {
@@ -66,12 +66,7 @@
       "category": "Development",
       "icon": "build/icons",
       "executableName": "linux-tree",
-      "synopsis": "Sourcetree-style Git GUI with git-flow",
-      "desktop": {
-        "entry": {
-          "StartupWMClass": "linux-tree"
-        }
-      }
+      "synopsis": "Sourcetree-style Git GUI with git-flow"
     },
     "deb": {
       "depends": [

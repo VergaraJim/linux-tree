@@ -1,3 +1,7 @@
+# 1.0.6
+
+- Instance lock and shutdown protection
+
 # 1.0.5
 
 - Major features added, some bug fixes
