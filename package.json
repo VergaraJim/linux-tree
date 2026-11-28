@@ -66,12 +66,7 @@
       "category": "Development",
       "icon": "build/icons",
       "executableName": "linux-tree",
-      "synopsis": "Sourcetree-style Git GUI with git-flow",
-      "desktop": {
-        "entry": {
-          "StartupWMClass": "linux-tree"
-        }
-      }
+      "synopsis": "Sourcetree-style Git GUI with git-flow"
     },
     "deb": {
       "depends": [

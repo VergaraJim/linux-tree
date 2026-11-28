@@ -1,8 +1,8 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, clipboard, Menu } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell, clipboard, Menu, powerMonitor } from 'electron'
 import { spawn } from 'child_process'
 import { join, dirname, resolve } from 'path'
 import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, readdirSync } from 'fs'
-import { askpassEnv, startAskpass, tmpDir } from './askpass'
+import { askpassEnv, startAskpass, stopAskpass, tmpDir } from './askpass'
 import { migrateLegacySettings } from './migrate-settings'
 
 export interface GitResult {
@@ -157,19 +157,53 @@ ipcMain.handle('fs:appendLines', (_e, cwd: string, file: string, lines: string[]
 })
 ipcMain.handle('clipboard:write', (_e, t: string) => clipboard.writeText(t))
 
-app.whenReady().then(() => {
-  migrateLegacySettings({
-    settingsPath: settingsFile(),
-    homeDir: app.getPath('home'),
-    sandboxed: !!process.env.FLATPAK_ID
+// One instance per user: launching again (dock, app grid, terminal) focuses the
+// open window instead of starting a second copy of the whole app.
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    const win = BrowserWindow.getAllWindows()[0]
+    if (!win) return createWindow()
+    if (win.isMinimized()) win.restore()
+    win.show()
+    win.focus()
   })
-  Menu.setApplicationMenu(null)
-  startAskpass()
-  createWindow()
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+
+  app.whenReady().then(() => {
+    migrateLegacySettings({
+      settingsPath: settingsFile(),
+      homeDir: app.getPath('home'),
+      sandboxed: !!process.env.FLATPAK_ID
+    })
+    Menu.setApplicationMenu(null)
+    startAskpass()
+    createWindow()
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    })
+
+    // Power-off / reboot: logind warns us first (Electron holds a delay lock while
+    // this listener exists), so quit cleanly before systemd kills our processes.
+    // Otherwise the GPU child dies first, Chromium aborts ("GPU process isn't
+    // usable. Goodbye.") and Ubuntu shows a crash report on the next login.
+    // Electron 33 bug: if 'shutdown' is the first powerMonitor listener it never
+    // takes the lock (its newListener hook is installed one event too late), so
+    // attach a no-op listener first.
+    powerMonitor.on('resume', () => {})
+    powerMonitor.on('shutdown', (e?: Electron.Event) => {
+      e?.preventDefault()
+      app.quit()
+    })
   })
-})
+
+  // Logout or `kill`: systemd sends SIGTERM to every process in our scope at once,
+  // so exit right away rather than racing the dying GPU process with a slow quit.
+  process.on('SIGTERM', () => {
+    stopAskpass()
+    app.exit(0)
+  })
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

@@ -83,14 +83,21 @@ export function startAskpass(): void {
     pending.delete(id)
   })
 
-  app.on('will-quit', () => {
-    server?.close()
-    try {
-      rmSync(dir, { recursive: true, force: true })
-    } catch {
-      /* ignore */
-    }
-  })
+  app.on('will-quit', stopAskpass)
+}
+
+// Close the socket and remove the private temp dir. Safe to call more than once;
+// also called directly on SIGTERM, where app.exit() skips 'will-quit'.
+export function stopAskpass(): void {
+  server?.close()
+  server = null
+  if (!dir) return
+  try {
+    rmSync(dir, { recursive: true, force: true })
+  } catch {
+    /* ignore */
+  }
+  dir = ''
 }
 
 function ask(prompt: string): Promise<string | null> {
